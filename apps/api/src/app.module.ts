@@ -11,6 +11,7 @@ import { PermissionsGuard } from './auth/permissions.guard';
 import { TenantContextInterceptor } from './tenancy/tenant-context.interceptor';
 import { MenuModule } from './modules/menu/menu.module';
 import { OrdersModule } from './modules/orders/orders.module';
+import { FloorModule } from './modules/floor/floor.module';
 
 @Module({
   imports: [
@@ -21,6 +22,7 @@ import { OrdersModule } from './modules/orders/orders.module';
     AuthModule,
     MenuModule,
     OrdersModule,
+    FloorModule,
   ],
   controllers: [HealthController],
   providers: [

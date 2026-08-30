@@ -10,11 +10,12 @@ export const PERMISSIONS = [
   'tenant.manage', 'outlets.read', 'outlets.write', 'users.read', 'users.write', 'roles.manage',
   'menu.read', 'menu.write', 'orders.read', 'orders.write', 'kots.read', 'kots.write',
   'bills.read', 'bills.write', 'bills.void', 'payments.read', 'payments.write', 'reports.read',
+  'tables.read', 'tables.write',
 ];
 const ROLES: Record<string, string[]> = {
   owner: PERMISSIONS,
   manager: PERMISSIONS.filter((p) => p !== 'tenant.manage'),
-  cashier: ['menu.read', 'orders.read', 'orders.write', 'kots.read', 'bills.read', 'bills.write', 'payments.read', 'payments.write'],
+  cashier: ['menu.read', 'orders.read', 'orders.write', 'kots.read', 'bills.read', 'bills.write', 'payments.read', 'payments.write', 'tables.read', 'tables.write'],
   kitchen: ['kots.read', 'kots.write', 'orders.read'],
 };
 
@@ -120,7 +121,19 @@ async function main() {
       });
     }
 
-    console.log(`seeded tenant=${slug} (${tid}) outlet=${outlet.code} owner=${email} / ${password} + sample menu`);
+    // ----- floor: sections + tables -----
+    const sec = async (name: string, sortOrder: number) =>
+      tx.floorSection.upsert({ where: { outletId_name: { outletId: outlet.id, name } }, update: {}, create: { tenantId: tid, outletId: outlet.id, name, sortOrder } });
+    const ground = await sec('Ground floor', 0);
+    const terrace = await sec('Terrace', 1);
+    const tbl = (sectionId: string, code: string, capacity: number, posX: number, posY: number, sortOrder: number) =>
+      tx.restaurantTable.upsert({ where: { outletId_code: { outletId: outlet.id, code } }, update: {}, create: { tenantId: tid, outletId: outlet.id, sectionId, code, capacity, posX, posY, sortOrder } });
+    await Promise.all([
+      tbl(ground.id, 'T1', 2, 100, 100, 0), tbl(ground.id, 'T2', 4, 300, 100, 1), tbl(ground.id, 'T3', 4, 500, 100, 2), tbl(ground.id, 'T4', 6, 100, 300, 3),
+      tbl(terrace.id, 'R1', 4, 100, 100, 0), tbl(terrace.id, 'R2', 8, 400, 100, 1),
+    ]);
+
+    console.log(`seeded tenant=${slug} (${tid}) outlet=${outlet.code} owner=${email} / ${password} + sample menu + floor`);
   });
 }
 

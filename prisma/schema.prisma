@@ -46,6 +46,15 @@ enum PaymentMode {
   OTHER
 }
 
+enum TableStatus {
+  FREE
+  OCCUPIED
+  RESERVED
+  BILLED
+  CLEANING
+  BLOCKED
+}
+
 enum PaymentStatus {
   PENDING
   CAPTURED
@@ -91,6 +100,8 @@ model Outlet {
   bills        Bill[]
   userRoles    UserRole[]
   outletPrices ItemOutletPrice[]
+  sections     FloorSection[]
+  tables       RestaurantTable[]
 
   @@unique([tenantId, code])
   @@index([tenantId])
@@ -416,6 +427,54 @@ model ComboItem {
 
   @@index([tenantId, comboId])
   @@map("combo_items")
+}
+
+// ---------------- Floor: sections & tables ----------------
+model FloorSection {
+  id        String    @id @default(uuid()) @db.Uuid
+  tenantId  String    @map("tenant_id") @db.Uuid
+  outletId  String    @map("outlet_id") @db.Uuid
+  outlet    Outlet    @relation(fields: [outletId], references: [id])
+  name      String // Ground floor / Terrace / AC hall
+  sortOrder Int       @default(0) @map("sort_order")
+  isActive  Boolean   @default(true) @map("is_active")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  tables RestaurantTable[]
+
+  @@unique([outletId, name])
+  @@index([tenantId, outletId])
+  @@map("floor_sections")
+}
+
+/// A physical table. status is live occupancy; currentOrderId is set by the ordering module (T-102).
+model RestaurantTable {
+  id             String       @id @default(uuid()) @db.Uuid
+  tenantId       String       @map("tenant_id") @db.Uuid
+  outletId       String       @map("outlet_id") @db.Uuid
+  outlet         Outlet       @relation(fields: [outletId], references: [id])
+  sectionId      String       @map("section_id") @db.Uuid
+  section        FloorSection @relation(fields: [sectionId], references: [id])
+  code           String // T1, T2, VIP-1
+  capacity       Int          @default(4)
+  status         TableStatus  @default(FREE)
+  statusSince    DateTime     @default(now()) @map("status_since")
+  currentOrderId String?      @map("current_order_id") @db.Uuid
+  /// floor-map coordinates (0-1000 grid) for the POS layout editor
+  posX           Int          @default(0) @map("pos_x")
+  posY           Int          @default(0) @map("pos_y")
+  sortOrder      Int          @default(0) @map("sort_order")
+  isActive       Boolean      @default(true) @map("is_active")
+  version        Int          @default(1)
+  createdAt      DateTime     @default(now()) @map("created_at")
+  updatedAt      DateTime     @updatedAt @map("updated_at")
+  deletedAt      DateTime?    @map("deleted_at")
+
+  @@unique([outletId, code])
+  @@index([tenantId, outletId, status])
+  @@map("tables")
 }
 
 // ---------------- Orders / KOT / Bills / Payments ----------------
