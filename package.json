@@ -14,7 +14,8 @@
     "db:seed": "tsx prisma/seed.ts",
     "db:rls-check": "tsx scripts/rls-check.ts",
     "api:dev": "pnpm --filter @billbistro/api dev",
-    "db:iso-check": "tsx scripts/tenant-isolation.check.ts"
+    "db:iso-check": "tsx scripts/tenant-isolation.check.ts",
+    "db:hardening-check": "tsx scripts/hardening-check.ts"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
