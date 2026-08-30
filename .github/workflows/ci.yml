@@ -32,8 +32,10 @@ jobs:
         run: psql "$DATABASE_URL_MIGRATE" -f infra/postgres/init.sql
       - run: pnpm db:migrate
       - run: pnpm db:seed
-      - name: RLS isolation proof
+      - name: RLS isolation proof (basic)
         run: pnpm db:rls-check
+      - name: Tenant isolation gate (MERGE BLOCKER — RLS coverage guard + planted-leak canary + per-model sweep)
+        run: pnpm db:iso-check
       - run: pnpm -r --filter @billbistro/types build
       - run: pnpm --filter @billbistro/api typecheck
       - run: pnpm --filter @billbistro/api build

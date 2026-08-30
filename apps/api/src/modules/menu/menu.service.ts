@@ -83,9 +83,36 @@ export class MenuService {
     if (!i) throw new NotFoundException('Item not found');
     return this.resolveItem(i, outletId);
   }
+  /** Nested create: item + variants + attached modifier groups (+ inline "Add-ons" group) in one transaction. */
   async createItem(d: S.CreateItem) {
     await this.mustExist('menuCategory', d.categoryId);
-    return this.db.menuItem.create({ data: { ...d, tenantId: this.tid() } });
+    const tid = this.tid();
+    const { variants, modifierGroupIds, modifiers, ...item } = d;
+    return this.prisma.withTenant(tid, async (tx) => {
+      const groupIds = [...(modifierGroupIds ?? [])];
+      if (groupIds.length) {
+        const found = await tx.modifierGroup.count({ where: { id: { in: groupIds }, ...live } });
+        if (found !== new Set(groupIds).size) throw new NotFoundException('One or more modifier groups not found');
+      }
+      const created = await tx.menuItem.create({
+        data: {
+          ...item,
+          tenantId: tid,
+          variants: variants?.length ? { create: variants.map((v, i) => ({ ...v, sortOrder: v.sortOrder ?? i, tenantId: tid })) } : undefined,
+        },
+      });
+      if (modifiers?.length) {
+        const g = await tx.modifierGroup.create({
+          data: { tenantId: tid, name: `${created.name} add-ons`, minSelect: 0, maxSelect: modifiers.length, options: { create: modifiers.map((m, i) => ({ ...m, sortOrder: i, tenantId: tid })) } },
+        });
+        groupIds.push(g.id);
+      }
+      if (groupIds.length) {
+        await tx.menuItemModifierGroup.createMany({ data: groupIds.map((groupId, i) => ({ tenantId: tid, itemId: created.id, groupId, sortOrder: i })) });
+      }
+      const full = await tx.menuItem.findUniqueOrThrow({ where: { id: created.id }, include: this.itemInclude() });
+      return this.resolveItem(full);
+    });
   }
   async updateItem(id: string, d: S.UpdateItem) {
     const before = await this.mustExist('menuItem', id);

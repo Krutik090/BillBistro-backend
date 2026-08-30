@@ -23,8 +23,24 @@ export const CreateCategory = z.object({
 });
 export const UpdateCategory = CreateCategory.partial();
 
+export const CreateVariant = z.object({
+  name: z.string().min(1).max(80),
+  priceDelta: z.number().int().default(0),
+  isDefault: z.boolean().optional(),
+  sortOrder: z.number().int().optional(),
+  isAvailable: z.boolean().optional(),
+});
+export const UpdateVariant = CreateVariant.partial();
+
+/** Flat item-level add-on (sugar): creates/uses an "Add-ons" modifier group attached to the item. */
+export const InlineModifier = z.object({ name: z.string().min(1).max(80), price: money.default(0) });
+
 export const CreateItem = z.object({
   categoryId: uuid,
+  /** nested create — one round-trip from the POS/dashboard item editor */
+  variants: z.array(CreateVariant).max(20).optional(),
+  modifierGroupIds: z.array(uuid).max(20).optional(),
+  modifiers: z.array(InlineModifier).max(30).optional(),
   name: z.string().min(1).max(160),
   description: z.string().max(1000).optional(),
   imageUrl: z.string().url().optional(),
@@ -38,16 +54,8 @@ export const CreateItem = z.object({
   station: z.string().max(40).optional(),
   scheduleId: uuid.nullable().optional(),
 });
-export const UpdateItem = CreateItem.partial();
-
-export const CreateVariant = z.object({
-  name: z.string().min(1).max(80),
-  priceDelta: z.number().int().default(0),
-  isDefault: z.boolean().optional(),
-  sortOrder: z.number().int().optional(),
-  isAvailable: z.boolean().optional(),
-});
-export const UpdateVariant = CreateVariant.partial();
+/** PATCH is flat: variants / modifier groups are managed via their own endpoints. */
+export const UpdateItem = CreateItem.omit({ variants: true, modifierGroupIds: true, modifiers: true }).partial();
 
 export const CreateModifierGroup = z.object({
   name: z.string().min(1).max(80),
