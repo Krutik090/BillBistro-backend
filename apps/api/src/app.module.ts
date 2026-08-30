@@ -13,6 +13,7 @@ import { MenuModule } from './modules/menu/menu.module';
 import { OrdersModule } from './modules/orders/orders.module';
 import { FloorModule } from './modules/floor/floor.module';
 import { OutletsModule } from './modules/outlets/outlets.module';
+import { BillingModule } from './modules/billing/billing.module';
 
 @Module({
   imports: [
@@ -25,6 +26,7 @@ import { OutletsModule } from './modules/outlets/outlets.module';
     OrdersModule,
     FloorModule,
     OutletsModule,
+    BillingModule,
   ],
   controllers: [HealthController],
   providers: [

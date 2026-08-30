@@ -35,6 +35,7 @@ enum KotStatus {
 enum BillStatus {
   DRAFT
   FINAL
+  SETTLED
   VOID
 }
 
@@ -600,30 +601,77 @@ model Kot {
 }
 
 model Bill {
-  id          String     @id @default(uuid()) @db.Uuid
-  tenantId    String     @map("tenant_id") @db.Uuid
-  outletId    String     @map("outlet_id") @db.Uuid
-  outlet      Outlet     @relation(fields: [outletId], references: [id])
-  orderId     String     @map("order_id") @db.Uuid
-  order       Order      @relation(fields: [orderId], references: [id])
-  billNo      String     @map("bill_no")
-  status      BillStatus @default(DRAFT)
-  subtotal    Int
-  taxTotal    Int        @map("tax_total")
-  discount    Int        @default(0)
-  roundOff    Int        @default(0) @map("round_off")
-  total       Int
-  version     Int        @default(1)
-  finalizedAt DateTime?  @map("finalized_at")
-  createdAt   DateTime   @default(now()) @map("created_at")
-  updatedAt   DateTime   @updatedAt @map("updated_at")
-  deletedAt   DateTime?  @map("deleted_at")
+  id             String     @id @default(uuid()) @db.Uuid
+  tenantId       String     @map("tenant_id") @db.Uuid
+  outletId       String     @map("outlet_id") @db.Uuid
+  outlet         Outlet     @relation(fields: [outletId], references: [id])
+  orderId        String     @map("order_id") @db.Uuid
+  order          Order      @relation(fields: [orderId], references: [id])
+  /// extra orders folded into this bill (merge tables)
+  mergedOrderIds String[]   @map("merged_order_ids") @db.Uuid
+  billNo         String     @map("bill_no")
+  status         BillStatus @default(DRAFT)
+  /// share of a split bill (1-based index / count); null = whole order
+  splitIndex     Int?       @map("split_index")
+  splitCount     Int?       @map("split_count")
+  subtotal       Int
+  discount       Int        @default(0)
+  discountNote   String?    @map("discount_note")
+  taxable        Int
+  taxTotal       Int        @map("tax_total")
+  cgst           Int        @default(0)
+  sgst           Int        @default(0)
+  tip            Int        @default(0)
+  roundOff       Int        @default(0) @map("round_off")
+  total          Int
+  paidTotal      Int        @default(0) @map("paid_total")
+  refundTotal    Int        @default(0) @map("refund_total")
+  version        Int        @default(1)
+  clientKey      String?    @map("client_key")
+  businessDate   String?    @map("business_date") // YYYY-MM-DD in tenant timezone, set at finalize
+  finalizedAt    DateTime?  @map("finalized_at")
+  settledAt      DateTime?  @map("settled_at")
+  voidedAt       DateTime?  @map("voided_at")
+  voidReason     String?    @map("void_reason")
+  createdById    String?    @map("created_by_id") @db.Uuid
+  createdAt      DateTime   @default(now()) @map("created_at")
+  updatedAt      DateTime   @updatedAt @map("updated_at")
+  deletedAt      DateTime?  @map("deleted_at")
 
+  lines    BillLine[]
   payments Payment[]
+  refunds  Refund[]
 
   @@unique([tenantId, outletId, billNo])
+  @@unique([tenantId, clientKey])
   @@index([tenantId, orderId])
+  @@index([tenantId, outletId, businessDate])
   @@map("bills")
+}
+
+/// Frozen bill line (share-scaled for split bills) with its tax breakdown — what the receipt prints.
+model BillLine {
+  id          String    @id @default(uuid()) @db.Uuid
+  tenantId    String    @map("tenant_id") @db.Uuid
+  billId      String    @map("bill_id") @db.Uuid
+  bill        Bill      @relation(fields: [billId], references: [id])
+  orderItemId String?   @map("order_item_id") @db.Uuid
+  name        String
+  qty         Int
+  unitPrice   Int       @map("unit_price")
+  lineTotal   Int       @map("line_total")
+  discount    Int       @default(0)
+  taxable     Int
+  taxRateBps  Int       @map("tax_rate_bps")
+  cgst        Int       @default(0)
+  sgst        Int       @default(0)
+  hsnCode     String?   @map("hsn_code")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  deletedAt   DateTime? @map("deleted_at")
+
+  @@index([tenantId, billId])
+  @@map("bill_lines")
 }
 
 model Payment {
@@ -632,17 +680,66 @@ model Payment {
   billId         String        @map("bill_id") @db.Uuid
   bill           Bill          @relation(fields: [billId], references: [id])
   mode           PaymentMode
-  status         PaymentStatus @default(PENDING)
+  status         PaymentStatus @default(CAPTURED)
   amount         Int
-  reference      String? // UPI txn id / card slip
+  /// cash handed over (change = tendered - amount)
+  tendered       Int?
+  reference      String? // UPI UTR / card slip / wallet txn
   idempotencyKey String?       @map("idempotency_key")
+  refundedTotal  Int           @default(0) @map("refunded_total")
+  businessDate   String?       @map("business_date")
+  receivedById   String?       @map("received_by_id") @db.Uuid
   createdAt      DateTime      @default(now()) @map("created_at")
   updatedAt      DateTime      @updatedAt @map("updated_at")
   deletedAt      DateTime?     @map("deleted_at")
 
+  refunds Refund[]
+
   @@unique([tenantId, idempotencyKey])
   @@index([tenantId, billId])
   @@map("payments")
+}
+
+model Refund {
+  id             String    @id @default(uuid()) @db.Uuid
+  tenantId       String    @map("tenant_id") @db.Uuid
+  billId         String    @map("bill_id") @db.Uuid
+  bill           Bill      @relation(fields: [billId], references: [id])
+  paymentId      String    @map("payment_id") @db.Uuid
+  payment        Payment   @relation(fields: [paymentId], references: [id])
+  amount         Int
+  reason         String
+  reference      String?
+  idempotencyKey String?   @map("idempotency_key")
+  businessDate   String?   @map("business_date")
+  createdById    String?   @map("created_by_id") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+  deletedAt      DateTime? @map("deleted_at")
+
+  @@unique([tenantId, idempotencyKey])
+  @@index([tenantId, billId])
+  @@map("refunds")
+}
+
+/// Z-report: one row per outlet per business date. Once CLOSED, no bill can be finalized/paid on that date.
+model DayClose {
+  id           String    @id @default(uuid()) @db.Uuid
+  tenantId     String    @map("tenant_id") @db.Uuid
+  outletId     String    @map("outlet_id") @db.Uuid
+  businessDate String    @map("business_date")
+  status       String    @default("CLOSED") // CLOSED | REOPENED
+  totals       Json
+  closedById   String?   @map("closed_by_id") @db.Uuid
+  closedAt     DateTime  @default(now()) @map("closed_at")
+  note         String?
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+  deletedAt    DateTime? @map("deleted_at")
+
+  @@unique([outletId, businessDate])
+  @@index([tenantId, outletId])
+  @@map("day_closes")
 }
 
 // ---------------- Audit (append-only; no UPDATE/DELETE grant, see rls migration) ----------------

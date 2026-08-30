@@ -80,6 +80,7 @@ export class OrdersService {
     return this.prisma.withTenant(tid, async (tx) => {
       if (d.clientKey) {
         const existing = await tx.order.findFirst({ where: { clientKey: d.clientKey }, include: orderInclude });
+        if (existing?.deletedAt) throw new ConflictException('clientKey already used');
         if (existing) return this.shape(existing); // idempotent replay
       }
       let outletId = d.outletId;
