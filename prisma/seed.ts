@@ -15,8 +15,8 @@ export const PERMISSIONS = [
 const ROLES: Record<string, string[]> = {
   owner: PERMISSIONS,
   manager: PERMISSIONS.filter((p) => p !== 'tenant.manage'),
-  cashier: ['menu.read', 'orders.read', 'orders.write', 'kots.read', 'bills.read', 'bills.write', 'payments.read', 'payments.write', 'tables.read', 'tables.write'],
-  kitchen: ['kots.read', 'kots.write', 'orders.read'],
+  cashier: ['outlets.read', 'menu.read', 'orders.read', 'orders.write', 'kots.read', 'bills.read', 'bills.write', 'payments.read', 'payments.write', 'tables.read', 'tables.write'],
+  kitchen: ['outlets.read', 'kots.read', 'kots.write', 'orders.read'],
 };
 
 async function main() {

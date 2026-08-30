@@ -12,6 +12,7 @@ import { TenantContextInterceptor } from './tenancy/tenant-context.interceptor';
 import { MenuModule } from './modules/menu/menu.module';
 import { OrdersModule } from './modules/orders/orders.module';
 import { FloorModule } from './modules/floor/floor.module';
+import { OutletsModule } from './modules/outlets/outlets.module';
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { FloorModule } from './modules/floor/floor.module';
     MenuModule,
     OrdersModule,
     FloorModule,
+    OutletsModule,
   ],
   controllers: [HealthController],
   providers: [
