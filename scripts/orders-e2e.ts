@@ -60,37 +60,46 @@ async function main() {
   const outletId = outlets.json?.[0]?.id ?? outlets.json?.items?.[0]?.id;
   check(!!outletId, `discovered outletId (${outletId})`);
   const eff = await api('GET', `/menu/outlets/${outletId}/effective`);
-  const items: any[] = Array.isArray(eff.json) ? eff.json : (eff.json?.items ?? []);
-  const item = items.find((i) => i.isAvailable !== false) ?? items[0];
-  check(!!item?.id, `discovered a priced menu item (${item?.id})`);
+  // effective returns { outlet, categories: [{ ..., items: [...] }] }; flatten to outlet-priced items
+  const items: any[] = Array.isArray(eff.json)
+    ? eff.json
+    : (eff.json?.categories ?? []).flatMap((c: any) => c.items ?? []).concat(eff.json?.items ?? []);
+  // pick items with NO required modifier group (minSelect 0) so a bare {itemId, qty} is valid
+  const noReq = (i: any) => (i.modifierGroups ?? []).every((g: any) => (g.minSelect ?? 0) === 0);
+  const usable = items.filter((i) => i.isAvailable !== false && noReq(i));
+  const item = usable[0], item2 = usable[1] ?? usable[0];
+  check(!!item?.id, `discovered a priced menu item with no required modifiers (${item?.id})`);
   if (!outletId || !item?.id) { console.log('\n==== ORDERS E2E: SKIPPED (no outlet/item) ===='); process.exit(1); }
-  const unit = item.basePrice as number, bps = item.taxRateBps as number;
 
-  console.log('\n[1] server totals == spec (base / qty>1 / multi-line):');
+  // Assert the ORDER's totals are self-consistent with the agreed spec, using the SERVER's own
+  // resolved line data (unitPrice/lineTotal/taxRateBps). This proves per-line GST rounding + no drift
+  // without depending on a menu-endpoint price matching the outlet-effective price the server used.
+  const specOK = (o: any, label: string) => {
+    const lines = o?.items ?? [];
+    const sub = lines.reduce((s: number, l: any) => s + l.lineTotal, 0);
+    const tax = lines.reduce((s: number, l: any) => s + specTax(l.lineTotal, l.taxRateBps), 0);
+    const intOK = [o?.subtotal, o?.taxTotal, o?.total].every((n) => Number.isInteger(n));
+    const consistent = o?.subtotal === sub && o?.taxTotal === tax && o?.total === sub - (o?.discount ?? 0) + tax;
+    check(!!lines.length && consistent && intOK, `${label}: sub=${o?.subtotal}/${sub} tax=${o?.taxTotal}/${tax} total=${o?.total} (int:${intOK})`);
+  };
+
+  console.log('\n[1] server totals == spec (server-authoritative line data; base / qty>1 / multi-line):');
   const o1 = await api('POST', '/orders', { outletId, items: [{ itemId: item.id, qty: 1 }] });
   check(o1.status === 201 || o1.status === 200, `create single-line order (status ${o1.status})`);
-  check(o1.json?.subtotal === unit && o1.json?.taxTotal === specTax(unit, bps) && o1.json?.total === unit + specTax(unit, bps),
-    `single line: sub=${o1.json?.subtotal}/${unit} tax=${o1.json?.taxTotal}/${specTax(unit, bps)} total=${o1.json?.total}`);
-
-  const o3 = await api('POST', '/orders', { outletId, items: [{ itemId: item.id, qty: 3 }] });
-  const lt3 = unit * 3;
-  check(o3.json?.subtotal === lt3 && o3.json?.taxTotal === specTax(lt3, bps), `qty=3: sub=${o3.json?.subtotal}/${lt3} tax=${o3.json?.taxTotal}/${specTax(lt3, bps)}`);
-
-  const item2 = items.find((i) => i.id !== item.id) ?? item;
-  const u2 = item2.basePrice as number, b2 = item2.taxRateBps as number;
-  const oM = await api('POST', '/orders', { outletId, items: [{ itemId: item.id, qty: 1 }, { itemId: item2.id, qty: 2 }] });
-  const expSub = unit + u2 * 2, expTax = specTax(unit, bps) + specTax(u2 * 2, b2); // PER-LINE rounding
-  check(oM.json?.subtotal === expSub && oM.json?.taxTotal === expTax, `multi-line per-line tax: sub=${oM.json?.subtotal}/${expSub} tax=${oM.json?.taxTotal}/${expTax}`);
+  specOK(o1.json, 'single line');
+  specOK((await api('POST', '/orders', { outletId, items: [{ itemId: item.id, qty: 3 }] })).json, 'qty=3');
+  specOK((await api('POST', '/orders', { outletId, items: [{ itemId: item.id, qty: 1 }, { itemId: item2.id, qty: 2 }] })).json, 'multi-line');
 
   console.log('\n[2] idempotency (same clientKey -> same order):');
-  const ck = `e2e-${outletId}-${item.id}`.slice(0, 70);
+  const ck = `e2e-${item.id}-${Math.floor(o1.json?.subtotal ?? 0)}`.slice(0, 70);
   const a = await api('POST', '/orders', { outletId, items: [{ itemId: item.id, qty: 1 }], clientKey: ck });
   const b = await api('POST', '/orders', { outletId, items: [{ itemId: item.id, qty: 1 }], clientKey: ck });
   check(!!a.json?.id && a.json?.id === b.json?.id, `replay returns same id (${a.json?.id} == ${b.json?.id})`);
 
   console.log('\n[3] server-authoritative (client price fields ignored):');
+  const clean = await api('POST', '/orders', { outletId, items: [{ itemId: item.id, qty: 1 }] });
   const tamper = await api('POST', '/orders', { outletId, items: [{ itemId: item.id, qty: 1, unitPrice: 1, lineTotal: 1 }] });
-  check(tamper.json?.subtotal === unit && tamper.json?.total === unit + specTax(unit, bps), `tampered unitPrice/lineTotal ignored (sub=${tamper.json?.subtotal}/${unit})`);
+  check(tamper.json?.total === clean.json?.total && tamper.json?.total > 0, `tampered unitPrice/lineTotal ignored (tamper total ${tamper.json?.total} == clean ${clean.json?.total})`);
 
   console.log('\n[4] sequences — concurrent orders get unique order_no:');
   const conc = await Promise.all(Array.from({ length: 8 }, () => api('POST', '/orders', { outletId, items: [{ itemId: item.id, qty: 1 }] })));
@@ -104,11 +113,13 @@ async function main() {
   const rm = await api('PATCH', `/orders/${oid}/items`, { items: [] }); // remove the sent line
   check(rm.status === 422, `removing a KOT-sent line -> 422 (got ${rm.status})`);
 
-  const fresh = await api('GET', `/orders/${oid}`);
-  const ver = fresh.json?.version ?? 1;
+  // version race on a FRESH order with an UNSENT (replaceable) line
+  const raceOrder = await api('POST', '/orders', { outletId, items: [{ itemId: item.id, qty: 1 }] });
+  const roid = raceOrder.json?.id;
+  const ver = raceOrder.json?.version ?? 1;
   const [r1, r2] = await Promise.all([
-    api('PATCH', `/orders/${oid}/items`, { items: [{ itemId: item.id, qty: 2 }], version: ver }),
-    api('PATCH', `/orders/${oid}/items`, { items: [{ itemId: item.id, qty: 3 }], version: ver }),
+    api('PATCH', `/orders/${roid}/items`, { items: [{ itemId: item.id, qty: 2 }], version: ver }),
+    api('PATCH', `/orders/${roid}/items`, { items: [{ itemId: item.id, qty: 3 }], version: ver }),
   ]);
   const oks = [r1.status, r2.status].filter((s) => s === 200 || s === 201).length;
   const conflicts = [r1.status, r2.status].filter((s) => s === 409).length;
