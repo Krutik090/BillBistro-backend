@@ -472,6 +472,8 @@ model RestaurantTable {
   updatedAt      DateTime     @updatedAt @map("updated_at")
   deletedAt      DateTime?    @map("deleted_at")
 
+  orders Order[]
+
   @@unique([outletId, code])
   @@index([tenantId, outletId, status])
   @@map("tables")
@@ -487,6 +489,12 @@ model Order {
   type        OrderType   @default(DINE_IN)
   status      OrderStatus @default(OPEN)
   tableRef    String?     @map("table_ref")
+  tableId     String?     @map("table_id") @db.Uuid
+  table       RestaurantTable? @relation(fields: [tableId], references: [id])
+  guestCount  Int?        @map("guest_count")
+  notes       String?
+  cancelledAt DateTime?   @map("cancelled_at")
+  cancelReason String?    @map("cancel_reason")
   subtotal    Int         @default(0)
   taxTotal    Int         @default(0) @map("tax_total")
   discount    Int         @default(0)
@@ -518,6 +526,9 @@ model OrderItem {
   item        MenuItem  @relation(fields: [itemId], references: [id])
   name        String // snapshot at time of order
   variantName String?   @map("variant_name")
+  variantId   String?   @map("variant_id") @db.Uuid
+  clientLineId String?  @map("client_line_id")
+  /// unit price before tax = base/outlet price + variant delta + modifiers (snapshot)
   qty         Int
   unitPrice   Int       @map("unit_price")
   taxRateBps  Int       @map("tax_rate_bps")
@@ -529,8 +540,42 @@ model OrderItem {
   updatedAt   DateTime  @updatedAt @map("updated_at")
   deletedAt   DateTime? @map("deleted_at")
 
+  modifiers OrderItemModifier[]
+
   @@index([tenantId, orderId])
   @@map("order_items")
+}
+
+/// Snapshot of a chosen modifier option on an order line (price frozen at order time).
+model OrderItemModifier {
+  id          String    @id @default(uuid()) @db.Uuid
+  tenantId    String    @map("tenant_id") @db.Uuid
+  orderItemId String    @map("order_item_id") @db.Uuid
+  orderItem   OrderItem @relation(fields: [orderItemId], references: [id])
+  optionId    String?   @map("option_id") @db.Uuid
+  name        String
+  price       Int       @default(0)
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  deletedAt   DateTime? @map("deleted_at")
+
+  @@index([tenantId, orderItemId])
+  @@map("order_item_modifiers")
+}
+
+/// Per-outlet document counters (order_no, kot_no, bill_no). Incremented under row lock.
+model Sequence {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  outletId  String   @map("outlet_id") @db.Uuid
+  key       String // order | kot | bill
+  value     Int      @default(0)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@unique([outletId, key])
+  @@index([tenantId])
+  @@map("sequences")
 }
 
 model Kot {
@@ -541,6 +586,9 @@ model Kot {
   kotNo     String    @map("kot_no")
   status    KotStatus @default(PENDING)
   station   String? // kitchen station / printer
+  outletId  String    @map("outlet_id") @db.Uuid
+  readyAt   DateTime? @map("ready_at")
+  servedAt  DateTime? @map("served_at")
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")
   deletedAt DateTime? @map("deleted_at")

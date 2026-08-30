@@ -1,48 +1,29 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Post } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
-import { z } from 'zod';
-import { CurrentUser, RequirePermissions } from '../../auth/decorators';
-import type { AuthPrincipal } from '../../auth/auth.types';
+import type { ZodSchema } from 'zod';
+import { RequirePermissions } from '../../auth/decorators';
 import { ZodValidationPipe } from '../../common/zod.pipe';
-import { PrismaService } from '../../prisma/prisma.service';
+import { OrdersService } from './orders.service';
+import * as S from './orders.schemas';
 
-const CreateOrder = z.object({
-  outletId: z.string().uuid(),
-  type: z.enum(['DINE_IN', 'TAKEAWAY', 'DELIVERY']).default('DINE_IN'),
-  tableRef: z.string().optional(),
-  clientKey: z.string().min(8).optional(), // idempotency key from POS
-});
+const Id = () => Param('id', ParseUUIDPipe);
+const body = (s: ZodSchema) => Body(new ZodValidationPipe(s));
+const query = (s: ZodSchema) => Query(new ZodValidationPipe(s));
 
-/** Order CRUD stub. Business logic (pricing, KOT, billing) lands in Phase 1. */
+/** Orders + KOTs. Server computes all money; client never sends amounts. */
 @ApiTags('orders')
-@Controller('orders')
+@Controller()
 export class OrdersController {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly orders: OrdersService) {}
 
-  @Get()
-  @RequirePermissions('orders.read')
-  list() {
-    return this.prisma.scoped.order.findMany({ where: { deletedAt: null }, orderBy: { createdAt: 'desc' }, take: 100 });
-  }
+  @Get('orders') @RequirePermissions('orders.read') list(@query(S.ListOrdersQuery) q: S.ListOrdersQuery) { return this.orders.list(q); }
+  @Get('orders/:id') @RequirePermissions('orders.read') get(@Id() id: string) { return this.orders.get(id); }
+  @Post('orders') @RequirePermissions('orders.write') create(@body(S.CreateOrder) d: S.CreateOrder) { return this.orders.create(d); }
+  @Patch('orders/:id/items') @RequirePermissions('orders.write') replaceItems(@Id() id: string, @body(S.ReplaceItems) d: S.ReplaceItems) { return this.orders.replaceItems(id, d); }
+  @Post('orders/:id/kots') @RequirePermissions('kots.write') createKot(@Id() id: string, @body(S.CreateKot) d: S.CreateKot) { return this.orders.createKot(id, d); }
+  @Post('orders/:id/cancel') @RequirePermissions('orders.write') cancel(@Id() id: string, @body(S.CancelOrder) d: S.CancelOrder) { return this.orders.cancel(id, d); }
 
-  @Get(':id')
-  @RequirePermissions('orders.read')
-  get(@Param('id', ParseUUIDPipe) id: string) {
-    return this.prisma.scoped.order.findFirstOrThrow({ where: { id, deletedAt: null }, include: { items: true, kots: true, bills: true } });
-  }
-
-  @Post()
-  @RequirePermissions('orders.write')
-  async create(@Body(new ZodValidationPipe(CreateOrder)) body: z.infer<typeof CreateOrder>, @CurrentUser() user: AuthPrincipal) {
-    return this.prisma.withTenant(user.tenantId, async (tx) => {
-      if (body.clientKey) {
-        const existing = await tx.order.findFirst({ where: { clientKey: body.clientKey } });
-        if (existing) return existing; // idempotent replay
-      }
-      const count = await tx.order.count({ where: { outletId: body.outletId } });
-      return tx.order.create({
-        data: { ...body, tenantId: user.tenantId, createdById: user.userId, orderNo: String(count + 1).padStart(6, '0') },
-      });
-    });
-  }
+  /** KDS feed */
+  @Get('kots') @RequirePermissions('kots.read') listKots(@query(S.ListKotsQuery) q: S.ListKotsQuery) { return this.orders.listKots(q); }
+  @Patch('kots/:id/status') @RequirePermissions('kots.write') setKotStatus(@Id() id: string, @body(S.SetKotStatus) d: S.SetKotStatus) { return this.orders.setKotStatus(id, d); }
 }
