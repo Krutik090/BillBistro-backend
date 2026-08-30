@@ -151,6 +151,11 @@ async function main() {
   const dc = await paidBill(); // a settled bill today
   const billNow = (await api('GET', `/bills/${dc.bill.id}`)).json;
   const businessDate = billNow?.businessDate ?? new Date().toISOString().slice(0, 10);
+  // day-close's precondition is no FINAL-but-unpaid bills; void the ones left by the negative-path
+  // sections ([4] overpay, [9] non-cash) so this exercises reconcile+close, not the unpaid guard.
+  const finals = (await api('GET', `/bills?outletId=${outletId}&status=FINAL`)).json;
+  const finalList: any[] = Array.isArray(finals) ? finals : (finals?.items ?? finals?.bills ?? []);
+  for (const fb of finalList) { if (fb?.id) await api('POST', `/bills/${fb.id}/void`, { reason: 'e2e cleanup before day-close' }); }
   const report = await api('POST', '/day-close', { outletId, businessDate });
   check(report.status === 200 || report.status === 201, `day-close -> ok (${report.status})`);
   // after close, finalizing a new bill for that outlet+date must be blocked
