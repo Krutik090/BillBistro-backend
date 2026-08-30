@@ -87,9 +87,10 @@ model Outlet {
   updatedAt DateTime  @updatedAt @map("updated_at")
   deletedAt DateTime? @map("deleted_at")
 
-  orders    Order[]
-  bills     Bill[]
-  userRoles UserRole[]
+  orders       Order[]
+  bills        Bill[]
+  userRoles    UserRole[]
+  outletPrices ItemOutletPrice[]
 
   @@unique([tenantId, code])
   @@index([tenantId])
@@ -206,15 +207,41 @@ model RefreshToken {
 }
 
 // ---------------- Menu ----------------
+// Tenant-level catalogue; per-outlet price/availability overrides via ItemOutletPrice.
+// Effective price = (ItemOutletPrice.price ?? MenuItem.basePrice) + MenuVariant.priceDelta + sum(ModifierOption.price)
+
+/// Time window (e.g. Breakfast 07:00-11:00, Happy hour Mon-Fri 16:00-19:00). daysMask bit0=Sun..bit6=Sat.
+model MenuSchedule {
+  id          String    @id @default(uuid()) @db.Uuid
+  tenantId    String    @map("tenant_id") @db.Uuid
+  name        String
+  daysMask    Int       @default(127) @map("days_mask")
+  startMinute Int       @map("start_minute") // minutes from midnight, outlet-local
+  endMinute   Int       @map("end_minute")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  deletedAt   DateTime? @map("deleted_at")
+
+  categories MenuCategory[]
+  items      MenuItem[]
+
+  @@index([tenantId])
+  @@map("menu_schedules")
+}
+
 model MenuCategory {
-  id        String    @id @default(uuid()) @db.Uuid
-  tenantId  String    @map("tenant_id") @db.Uuid
-  name      String
-  sortOrder Int       @default(0) @map("sort_order")
-  isActive  Boolean   @default(true) @map("is_active")
-  createdAt DateTime  @default(now()) @map("created_at")
-  updatedAt DateTime  @updatedAt @map("updated_at")
-  deletedAt DateTime? @map("deleted_at")
+  id          String        @id @default(uuid()) @db.Uuid
+  tenantId    String        @map("tenant_id") @db.Uuid
+  name        String
+  description String?
+  imageUrl    String?       @map("image_url")
+  sortOrder   Int           @default(0) @map("sort_order")
+  isActive    Boolean       @default(true) @map("is_active")
+  scheduleId  String?       @map("schedule_id") @db.Uuid
+  schedule    MenuSchedule? @relation(fields: [scheduleId], references: [id])
+  createdAt   DateTime      @default(now()) @map("created_at")
+  updatedAt   DateTime      @updatedAt @map("updated_at")
+  deletedAt   DateTime?     @map("deleted_at")
 
   items MenuItem[]
 
@@ -223,59 +250,172 @@ model MenuCategory {
 }
 
 model MenuItem {
-  id          String       @id @default(uuid()) @db.Uuid
-  tenantId    String       @map("tenant_id") @db.Uuid
-  categoryId  String       @map("category_id") @db.Uuid
-  category    MenuCategory @relation(fields: [categoryId], references: [id])
+  id          String        @id @default(uuid()) @db.Uuid
+  tenantId    String        @map("tenant_id") @db.Uuid
+  categoryId  String        @map("category_id") @db.Uuid
+  category    MenuCategory  @relation(fields: [categoryId], references: [id])
   sku         String?
   name        String
   description String?
+  imageUrl    String?       @map("image_url")
   /// base price in minor units (paise)
-  basePrice   Int          @map("base_price")
+  basePrice   Int           @map("base_price")
   /// GST rate in basis points (500 = 5%)
-  taxRateBps  Int          @default(500) @map("tax_rate_bps")
-  isVeg       Boolean      @default(true) @map("is_veg")
-  isAvailable Boolean      @default(true) @map("is_available")
-  createdAt   DateTime     @default(now()) @map("created_at")
-  updatedAt   DateTime     @updatedAt @map("updated_at")
-  deletedAt   DateTime?    @map("deleted_at")
+  taxRateBps  Int           @default(500) @map("tax_rate_bps")
+  /// HSN/SAC code for GST invoices
+  hsnCode     String?       @map("hsn_code")
+  isVeg       Boolean       @default(true) @map("is_veg")
+  isAvailable Boolean       @default(true) @map("is_available")
+  sortOrder   Int           @default(0) @map("sort_order")
+  /// kitchen station / KOT routing hint
+  station     String?
+  scheduleId  String?       @map("schedule_id") @db.Uuid
+  schedule    MenuSchedule? @relation(fields: [scheduleId], references: [id])
+  createdAt   DateTime      @default(now()) @map("created_at")
+  updatedAt   DateTime      @updatedAt @map("updated_at")
+  deletedAt   DateTime?     @map("deleted_at")
 
-  variants   MenuVariant[]
-  modifiers  MenuModifier[]
-  orderItems OrderItem[]
+  variants       MenuVariant[]
+  modifierGroups MenuItemModifierGroup[]
+  outletPrices   ItemOutletPrice[]
+  comboItems     ComboItem[]
+  orderItems     OrderItem[]
 
+  @@unique([tenantId, sku])
   @@index([tenantId, categoryId])
   @@map("menu_items")
 }
 
+/// Size/portion choice (Half / Full / Large). priceDelta added to the effective base price.
 model MenuVariant {
-  id         String    @id @default(uuid()) @db.Uuid
-  tenantId   String    @map("tenant_id") @db.Uuid
-  itemId     String    @map("item_id") @db.Uuid
-  item       MenuItem  @relation(fields: [itemId], references: [id])
-  name       String // Half / Full / Large
-  priceDelta Int       @default(0) @map("price_delta")
-  createdAt  DateTime  @default(now()) @map("created_at")
-  updatedAt  DateTime  @updatedAt @map("updated_at")
-  deletedAt  DateTime? @map("deleted_at")
+  id          String    @id @default(uuid()) @db.Uuid
+  tenantId    String    @map("tenant_id") @db.Uuid
+  itemId      String    @map("item_id") @db.Uuid
+  item        MenuItem  @relation(fields: [itemId], references: [id])
+  name        String
+  priceDelta  Int       @default(0) @map("price_delta")
+  isDefault   Boolean   @default(false) @map("is_default")
+  sortOrder   Int       @default(0) @map("sort_order")
+  isAvailable Boolean   @default(true) @map("is_available")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  deletedAt   DateTime? @map("deleted_at")
+
+  comboItems ComboItem[]
 
   @@index([tenantId, itemId])
   @@map("menu_variants")
 }
 
-model MenuModifier {
+/// Reusable add-on group (e.g. "Toppings" min 0 max 3, "Spice level" min 1 max 1).
+model ModifierGroup {
   id        String    @id @default(uuid()) @db.Uuid
   tenantId  String    @map("tenant_id") @db.Uuid
-  itemId    String    @map("item_id") @db.Uuid
-  item      MenuItem  @relation(fields: [itemId], references: [id])
-  name      String // Extra cheese
-  price     Int       @default(0)
+  name      String
+  minSelect Int       @default(0) @map("min_select")
+  maxSelect Int       @default(1) @map("max_select")
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")
   deletedAt DateTime? @map("deleted_at")
 
+  options ModifierOption[]
+  items   MenuItemModifierGroup[]
+
+  @@index([tenantId])
+  @@map("modifier_groups")
+}
+
+model ModifierOption {
+  id          String        @id @default(uuid()) @db.Uuid
+  tenantId    String        @map("tenant_id") @db.Uuid
+  groupId     String        @map("group_id") @db.Uuid
+  group       ModifierGroup @relation(fields: [groupId], references: [id])
+  name        String
+  price       Int           @default(0)
+  isDefault   Boolean       @default(false) @map("is_default")
+  isAvailable Boolean       @default(true) @map("is_available")
+  sortOrder   Int           @default(0) @map("sort_order")
+  createdAt   DateTime      @default(now()) @map("created_at")
+  updatedAt   DateTime      @updatedAt @map("updated_at")
+  deletedAt   DateTime?     @map("deleted_at")
+
+  @@index([tenantId, groupId])
+  @@map("modifier_options")
+}
+
+/// Attach a modifier group to an item.
+model MenuItemModifierGroup {
+  id        String        @id @default(uuid()) @db.Uuid
+  tenantId  String        @map("tenant_id") @db.Uuid
+  itemId    String        @map("item_id") @db.Uuid
+  item      MenuItem      @relation(fields: [itemId], references: [id])
+  groupId   String        @map("group_id") @db.Uuid
+  group     ModifierGroup @relation(fields: [groupId], references: [id])
+  sortOrder Int           @default(0) @map("sort_order")
+  createdAt DateTime      @default(now()) @map("created_at")
+  updatedAt DateTime      @updatedAt @map("updated_at")
+  deletedAt DateTime?     @map("deleted_at")
+
+  @@unique([itemId, groupId])
   @@index([tenantId, itemId])
-  @@map("menu_modifiers")
+  @@map("menu_item_modifier_groups")
+}
+
+/// Per-outlet price / availability override. Absent row = use MenuItem.basePrice / isAvailable.
+model ItemOutletPrice {
+  id          String    @id @default(uuid()) @db.Uuid
+  tenantId    String    @map("tenant_id") @db.Uuid
+  itemId      String    @map("item_id") @db.Uuid
+  item        MenuItem  @relation(fields: [itemId], references: [id])
+  outletId    String    @map("outlet_id") @db.Uuid
+  outlet      Outlet    @relation(fields: [outletId], references: [id])
+  price       Int?
+  isAvailable Boolean?  @map("is_available")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  deletedAt   DateTime? @map("deleted_at")
+
+  @@unique([itemId, outletId])
+  @@index([tenantId, outletId])
+  @@map("item_outlet_prices")
+}
+
+/// Fixed-price bundle of items (e.g. Thali, Meal deal). Tax computed per component line at order time.
+model Combo {
+  id          String    @id @default(uuid()) @db.Uuid
+  tenantId    String    @map("tenant_id") @db.Uuid
+  name        String
+  description String?
+  imageUrl    String?   @map("image_url")
+  price       Int
+  isAvailable Boolean   @default(true) @map("is_available")
+  sortOrder   Int       @default(0) @map("sort_order")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  deletedAt   DateTime? @map("deleted_at")
+
+  items ComboItem[]
+
+  @@index([tenantId])
+  @@map("combos")
+}
+
+model ComboItem {
+  id        String       @id @default(uuid()) @db.Uuid
+  tenantId  String       @map("tenant_id") @db.Uuid
+  comboId   String       @map("combo_id") @db.Uuid
+  combo     Combo        @relation(fields: [comboId], references: [id])
+  itemId    String       @map("item_id") @db.Uuid
+  item      MenuItem     @relation(fields: [itemId], references: [id])
+  variantId String?      @map("variant_id") @db.Uuid
+  variant   MenuVariant? @relation(fields: [variantId], references: [id])
+  qty       Int          @default(1)
+  createdAt DateTime     @default(now()) @map("created_at")
+  updatedAt DateTime     @updatedAt @map("updated_at")
+  deletedAt DateTime?    @map("deleted_at")
+
+  @@index([tenantId, comboId])
+  @@map("combo_items")
 }
 
 // ---------------- Orders / KOT / Bills / Payments ----------------

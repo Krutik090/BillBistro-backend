@@ -53,20 +53,45 @@ async function seed(id: string, tag: string): Promise<Seed> {
     const orderItem = await tx.orderItem.create({ data: { tenantId: id, orderId: order.id, itemId: menuItem.id, name: 'Chai', qty: 1, unitPrice: 2000, taxRateBps: 500, lineTotal: 2000 } });
     const bill = await tx.bill.create({ data: { tenantId: id, outletId: outlet.id, orderId: order.id, billNo: `${tag}-B001`, subtotal: 2000, taxTotal: 100, total: 2100 } });
     const payment = await tx.payment.create({ data: { tenantId: id, billId: bill.id, mode: 'CASH', amount: 2100 } });
-    return { id, rows: { user: user.id, menuItem: menuItem.id, order: order.id, orderItem: orderItem.id, bill: bill.id, payment: payment.id } };
+    const audit = await tx.auditLog.create({ data: { tenantId: id, action: 'seed', entity: 'tenants', entityId: id } });
+    return { id, rows: { user: user.id, menuItem: menuItem.id, order: order.id, orderItem: orderItem.id, bill: bill.id, payment: payment.id, auditLog: audit.id } };
   });
 }
 
 async function cleanup(ids: string[]) {
   await bypass(admin, async (tx: any) => {
-    for (const m of ['payment', 'bill', 'orderItem', 'kot', 'order', 'menuItem', 'menuCategory', 'user', 'outlet']) {
+    for (const m of ['auditLog', 'payment', 'bill', 'orderItem', 'kot', 'order', 'menuItem', 'menuCategory', 'user', 'outlet']) {
       await tx[m].deleteMany({ where: { tenantId: { in: ids } } });
     }
     await tx.tenant.deleteMany({ where: { id: { in: ids } } });
   });
 }
 
+/**
+ * Coverage guard: every table with a tenant_id column MUST have RLS ENABLED + FORCED
+ * and >=1 policy. Auto-catches a NEW tenant table that ships without isolation as the
+ * schema grows — no manual per-table wiring. `permissions` has no tenant_id, correctly excluded.
+ */
+async function coverageGuard() {
+  console.log('[0] RLS coverage (every tenant_id table is ENABLED + FORCED + has a policy):');
+  const rows: any[] = await admin.$queryRawUnsafe(`
+    SELECT c.relname AS "table",
+           c.relrowsecurity AS enabled,
+           c.relforcerowsecurity AS forced,
+           (SELECT count(*)::int FROM pg_policies p WHERE p.schemaname='public' AND p.tablename=c.relname) AS policies
+    FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+    WHERE n.nspname='public' AND c.relkind='r'
+      AND EXISTS (SELECT 1 FROM pg_attribute a WHERE a.attrelid=c.oid AND a.attname='tenant_id' AND a.attnum>0 AND NOT a.attisdropped)
+    ORDER BY c.relname`);
+  check(rows.length > 0, `found ${rows.length} tenant-scoped tables to verify`);
+  for (const r of rows) {
+    check(r.enabled && r.forced && r.policies > 0,
+      `${r.table}: RLS enabled=${r.enabled} forced=${r.forced} policies=${r.policies}`);
+  }
+}
+
 async function main() {
+  await coverageGuard();
   const Aid = crypto.randomUUID();
   const Bid = crypto.randomUUID();
   const A = await seed(Aid, 'a');
@@ -103,6 +128,21 @@ async function main() {
     await bypass(app, (tx: any) => tx.$queryRawUnsafe('SELECT 1'));
     const afterBypass = await app.order.findMany({ where: { tenantId: { in: [Aid, Bid] } } });
     check(afterBypass.length === 0, `bypass is transaction-local (fresh read after a bypass tx is still fail-closed)`);
+
+    console.log('\n[6] audit_logs — tenant isolation + APPEND-ONLY (SELECT/INSERT only, no UPDATE/DELETE):');
+    const auditRows: any[] = await scoped(Aid, (tx: any) => tx.auditLog.findMany());
+    check(auditRows.length > 0 && auditRows.every((r) => r.tenantId === Aid), `audit_logs: A reads only A's rows (${auditRows.length})`);
+    check(!auditRows.some((r) => r.id === B.rows.auditLog), `audit_logs: B's audit row is invisible to A`);
+    const canInsert = await scoped(Aid, (tx: any) => tx.auditLog.create({ data: { tenantId: Aid, action: 'test.append', entity: 'x' } }).then(() => true).catch(() => false));
+    check(canInsert, `audit_logs: A can INSERT its own audit row (append works)`);
+    let updBlocked = false;
+    try { await scoped(Aid, (tx: any) => tx.$executeRawUnsafe(`UPDATE audit_logs SET action='tamper' WHERE tenant_id='${Aid}'`)); }
+    catch { updBlocked = true; }
+    check(updBlocked, `audit_logs: UPDATE is blocked for the app role (append-only)`);
+    let delBlocked = false;
+    try { await scoped(Aid, (tx: any) => tx.$executeRawUnsafe(`DELETE FROM audit_logs WHERE tenant_id='${Aid}'`)); }
+    catch { delBlocked = true; }
+    check(delBlocked, `audit_logs: DELETE is blocked for the app role (append-only)`);
   } finally {
     await cleanup([Aid, Bid]);
   }
