@@ -1,0 +1,9 @@
+{
+  "extends": "@billbistro/config/tsconfig/nest.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "baseUrl": "./",
+    "types": ["node"]
+  },
+  "include": ["src"]
+}

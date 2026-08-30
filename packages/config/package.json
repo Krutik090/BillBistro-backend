@@ -1,0 +1,17 @@
+{
+  "name": "@billbistro/config",
+  "version": "0.0.1",
+  "private": true,
+  "files": ["tsconfig", "tailwind", "tokens"],
+  "exports": {
+    "./tsconfig/*": "./tsconfig/*",
+    "./tailwind/theme.css": "./tailwind/theme.css",
+    "./tokens/tokens.css": "./tokens/dist/tokens.css",
+    "./tokens": "./tokens/dist/tokens.ts",
+    "./tokens/tokens.json": "./tokens/tokens.json"
+  },
+  "scripts": {
+    "build": "node tokens/build.mjs",
+    "tokens": "node tokens/build.mjs"
+  }
+}
