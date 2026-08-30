@@ -101,3 +101,28 @@ pnpm prisma migrate diff --from-migrations prisma/migrations --to-schema-datamod
 pnpm db:migrate && pnpm db:generate
 ```
 Rule: every new table has `tenant_id` and appears in an RLS block; `scripts/rls-check.ts` must stay green.
+
+## Phase 1 status (2026-08-30)
+
+Built and smoke-verified on `phase1-backend`:
+
+- **Hardening** — deny-by-default RBAC, uniform error shape, throttling + lockout, append-only `audit_logs`.
+- **Menu** — schedules, categories, items (nested create), variants, modifier groups, per-outlet pricing, combos, resolved `effective` menu.
+- **Floor** — sections, tables, occupancy state machine with optimistic versioning.
+- **Orders/KOT** — server-priced lines, idempotent create, KOT routing + KDS feed, immutable sent lines, cancel.
+- **Billing** — split (equal-N) / merge bills, discount-before-tax, per-line GST (CGST/SGST), tip, rupee round-off, cash/UPI/card payments (idempotent), refunds, void, receipt payload, day-close Z-report.
+- **Gates (CI merge blockers):** `pnpm check:money` (pure money math) and `pnpm db:iso-check` (RLS coverage + cross-tenant sweep); `pnpm db:rls-check` and the 423/429 hardening probe run as extra checks.
+
+Not built yet: by-item / by-seat split bills, reports (T-104), payment gateway, realtime (WebSocket) KDS push, tenant self-serve onboarding.
+
+### Run the full stack
+
+```bash
+pnpm install && cp .env.example .env
+docker compose -f infra/docker-compose.yml up -d postgres redis      # postgres on host :5433
+pnpm db:migrate && pnpm db:seed                                       # demo tenant + menu + floor
+pnpm check:money && pnpm db:iso-check                                 # gates (both must PASS)
+pnpm api:dev                                                          # API :4000, Swagger /docs
+# frontends (Pam): pnpm --filter @billbistro/pos dev  /  @billbistro/dashboard dev
+```
+Login: tenant `demo`, `owner@demo.local` / `Password123!`. Try: `GET /v1/outlets` → `GET /v1/menu/outlets/:id/effective` → `POST /v1/orders` → `POST /v1/orders/:id/kots` → `POST /v1/bills` → `/finalize` → `/payments` → `GET /v1/bills/:id/receipt` → `POST /v1/day-close`.
