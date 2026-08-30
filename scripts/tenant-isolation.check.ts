@@ -51,7 +51,7 @@ async function seed(id: string, tag: string): Promise<Seed> {
     const menuItem = await tx.menuItem.create({ data: { tenantId: id, categoryId: cat.id, name: 'Chai', basePrice: 2000 } });
     const order = await tx.order.create({ data: { tenantId: id, outletId: outlet.id, orderNo: `${tag}-001` } });
     const orderItem = await tx.orderItem.create({ data: { tenantId: id, orderId: order.id, itemId: menuItem.id, name: 'Chai', qty: 1, unitPrice: 2000, taxRateBps: 500, lineTotal: 2000 } });
-    const bill = await tx.bill.create({ data: { tenantId: id, outletId: outlet.id, orderId: order.id, billNo: `${tag}-B001`, subtotal: 2000, taxTotal: 100, total: 2100 } });
+    const bill = await tx.bill.create({ data: { tenantId: id, outletId: outlet.id, orderId: order.id, billNo: `${tag}-B001`, subtotal: 2000, taxable: 2000, taxTotal: 100, total: 2100 } });
     const payment = await tx.payment.create({ data: { tenantId: id, billId: bill.id, mode: 'CASH', amount: 2100 } });
     const audit = await tx.auditLog.create({ data: { tenantId: id, action: 'seed', entity: 'tenants', entityId: id } });
     return { id, rows: { user: user.id, menuItem: menuItem.id, order: order.id, orderItem: orderItem.id, bill: bill.id, payment: payment.id, auditLog: audit.id } };

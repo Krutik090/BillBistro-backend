@@ -15,7 +15,8 @@
     "db:rls-check": "tsx scripts/rls-check.ts",
     "api:dev": "pnpm --filter @billbistro/api dev",
     "db:iso-check": "tsx scripts/tenant-isolation.check.ts",
-    "db:hardening-check": "tsx scripts/hardening-check.ts"
+    "db:hardening-check": "tsx scripts/hardening-check.ts",
+    "check:money": "tsx scripts/money-check.ts"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
