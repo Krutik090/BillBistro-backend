@@ -49,6 +49,10 @@ jobs:
         continue-on-error: true
         run: pnpm db:hardening-check
         env: { API_URL: http://localhost:4000 }
+      - name: Orders runtime e2e (T-102 totals / idempotency / concurrency) — NON-blocking until proven stable
+        continue-on-error: true
+        run: pnpm db:orders-e2e
+        env: { API_URL: http://localhost:4000 }
       - name: API log (on probe failure)
         if: always()
         run: tail -n 50 api.log || true

@@ -16,7 +16,8 @@
     "api:dev": "pnpm --filter @billbistro/api dev",
     "db:iso-check": "tsx scripts/tenant-isolation.check.ts",
     "db:hardening-check": "tsx scripts/hardening-check.ts",
-    "check:money": "tsx scripts/money-check.ts"
+    "check:money": "tsx scripts/money-check.ts",
+    "db:orders-e2e": "tsx scripts/orders-e2e.ts"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
