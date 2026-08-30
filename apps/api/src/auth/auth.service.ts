@@ -92,8 +92,8 @@ export class AuthService {
     const access: AccessClaims = { sub: principal.userId, tid: principal.tenantId, roles: principal.roles, perms: principal.permissions };
     const refresh: RefreshClaims = { sub: principal.userId, tid: principal.tenantId, jti };
     const [accessToken, refreshToken] = await Promise.all([
-      this.jwt.signAsync(access, { secret: env.JWT_ACCESS_SECRET, expiresIn: env.JWT_ACCESS_TTL }),
-      this.jwt.signAsync(refresh, { secret: env.JWT_REFRESH_SECRET, expiresIn: `${env.JWT_REFRESH_TTL_DAYS}d` }),
+      this.jwt.signAsync(access, { secret: env.JWT_ACCESS_SECRET, expiresIn: env.JWT_ACCESS_TTL_SECONDS }),
+      this.jwt.signAsync(refresh, { secret: env.JWT_REFRESH_SECRET, expiresIn: env.JWT_REFRESH_TTL_DAYS * 86_400 }),
     ]);
     return { accessToken, refreshToken, principal };
   }

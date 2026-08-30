@@ -9,7 +9,7 @@ const Env = z.object({
   REDIS_URL: z.string().default('redis://localhost:6379'),
   JWT_ACCESS_SECRET: z.string().min(16),
   JWT_REFRESH_SECRET: z.string().min(16),
-  JWT_ACCESS_TTL: z.string().default('15m'),
+  JWT_ACCESS_TTL_SECONDS: z.coerce.number().default(900),
   JWT_REFRESH_TTL_DAYS: z.coerce.number().default(30),
   COOKIE_SECURE: z
     .string()

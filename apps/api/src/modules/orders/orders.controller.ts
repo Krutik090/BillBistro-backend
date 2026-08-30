@@ -22,13 +22,13 @@ export class OrdersController {
   @Get()
   @RequirePermissions('orders.read')
   list() {
-    return this.prisma.tenant.order.findMany({ where: { deletedAt: null }, orderBy: { createdAt: 'desc' }, take: 100 });
+    return this.prisma.scoped.order.findMany({ where: { deletedAt: null }, orderBy: { createdAt: 'desc' }, take: 100 });
   }
 
   @Get(':id')
   @RequirePermissions('orders.read')
   get(@Param('id', ParseUUIDPipe) id: string) {
-    return this.prisma.tenant.order.findFirstOrThrow({ where: { id, deletedAt: null }, include: { items: true, kots: true, bills: true } });
+    return this.prisma.scoped.order.findFirstOrThrow({ where: { id, deletedAt: null }, include: { items: true, kots: true, bills: true } });
   }
 
   @Post()

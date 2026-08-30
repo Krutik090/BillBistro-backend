@@ -16,7 +16,7 @@ const CreateItem = z.object({
   sku: z.string().optional(),
 });
 
-/** CRUD stubs — tenant scope is applied by prisma.tenant (RLS); no where:{tenantId} needed for reads. */
+/** CRUD stubs — tenant scope is applied by prisma.scoped (RLS); no where:{tenantId} needed for reads. */
 @ApiTags('menu')
 @Controller('menu')
 export class MenuController {
@@ -25,30 +25,30 @@ export class MenuController {
   @Get('categories')
   @RequirePermissions('menu.read')
   categories() {
-    return this.prisma.tenant.menuCategory.findMany({ where: { deletedAt: null }, orderBy: { sortOrder: 'asc' } });
+    return this.prisma.scoped.menuCategory.findMany({ where: { deletedAt: null }, orderBy: { sortOrder: 'asc' } });
   }
 
   @Post('categories')
   @RequirePermissions('menu.write')
   createCategory(@Body(new ZodValidationPipe(CreateCategory)) body: z.infer<typeof CreateCategory>) {
-    return this.prisma.tenant.menuCategory.create({ data: { ...body, tenantId: requireTenantId() } });
+    return this.prisma.scoped.menuCategory.create({ data: { ...body, tenantId: requireTenantId() } });
   }
 
   @Get('items')
   @RequirePermissions('menu.read')
   items() {
-    return this.prisma.tenant.menuItem.findMany({ where: { deletedAt: null }, include: { variants: true, modifiers: true } });
+    return this.prisma.scoped.menuItem.findMany({ where: { deletedAt: null }, include: { variants: true, modifiers: true } });
   }
 
   @Get('items/:id')
   @RequirePermissions('menu.read')
   item(@Param('id', ParseUUIDPipe) id: string) {
-    return this.prisma.tenant.menuItem.findFirstOrThrow({ where: { id, deletedAt: null } });
+    return this.prisma.scoped.menuItem.findFirstOrThrow({ where: { id, deletedAt: null } });
   }
 
   @Post('items')
   @RequirePermissions('menu.write')
   createItem(@Body(new ZodValidationPipe(CreateItem)) body: z.infer<typeof CreateItem>) {
-    return this.prisma.tenant.menuItem.create({ data: { ...body, tenantId: requireTenantId() } });
+    return this.prisma.scoped.menuItem.create({ data: { ...body, tenantId: requireTenantId() } });
   }
 }

@@ -27,7 +27,7 @@ export type TenantClient = ReturnType<typeof createTenantClient>;
 /**
  * Prisma access with tenant scoping enforced by Postgres RLS.
  *
- *  - `prisma.tenant`               : tenant-scoped client; tenant comes from AsyncLocalStorage per call.
+ *  - `prisma.scoped`              : tenant-scoped client; tenant comes from AsyncLocalStorage per call.
  *  - `prisma.withTenant(tid, fn)`  : interactive transaction pre-bound to a tenant (multi-step writes).
  *  - `prisma.system(fn)`           : interactive transaction with `app.bypass_rls=on` — ONLY for platform
  *                                    paths that run before a tenant is known (login tenant lookup).
@@ -37,7 +37,7 @@ export type TenantClient = ReturnType<typeof createTenantClient>;
  */
 @Injectable()
 export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
-  readonly tenant: TenantClient = createTenantClient(this);
+  readonly scoped: TenantClient = createTenantClient(this);
 
   async onModuleInit() {
     await this.$connect();

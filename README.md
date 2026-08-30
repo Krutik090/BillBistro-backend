@@ -29,6 +29,7 @@ pnpm db:migrate          # prisma migrate deploy (uses DATABASE_URL_MIGRATE = ta
 pnpm db:seed             # demo tenant: slug demo, owner@demo.local / Password123!
 pnpm db:rls-check        # must print "RLS CHECK PASSED"
 pnpm api:dev             # http://localhost:4000/health  docs: /docs
+# NOTE: postgres is published on host port 5433 (5432 is commonly taken by a local install).
 ```
 
 Everything in one go (builds the api image, migrates + seeds on boot):
@@ -53,7 +54,7 @@ curl -b c.txt http://localhost:4000/v1/auth/me
   where `app_current_tenant()` reads the transaction-local GUC `app.tenant_id`.
 - The API connects as `billbistro_app` (**NOSUPERUSER, NOBYPASSRLS**, not the table owner).
   Migrations/seed use `DATABASE_URL_MIGRATE` (owner).
-- In code: `prisma.tenant.<model>` (tenant from request context, set by `TenantContextInterceptor`
+- In code: `prisma.scoped.<model>` (tenant from request context, set by `TenantContextInterceptor`
   from the JWT), `prisma.withTenant(tenantId, fn)` for multi-step transactions,
   `prisma.system(fn)` (sets `app.bypass_rls=on`) **only** for platform paths such as
   tenant lookup at login.
