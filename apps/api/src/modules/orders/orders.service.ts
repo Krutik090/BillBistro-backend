@@ -136,6 +136,7 @@ export class OrdersService {
     const tid = requireTenantId();
     return this.prisma.withTenant(tid, async (tx) => {
       const order = await this.mustOpen(tx, id, d.version);
+      await this.claimVersion(tx, id, d.version ?? order.version);
       const existing = await tx.orderItem.findMany({ where: { orderId: id, ...live } });
       const sent = existing.filter((e) => e.kotId);
       const matchesSent = (l: S.OrderLineInput, e: (typeof existing)[number]) => !!l.clientLineId && (l.clientLineId === e.clientLineId || l.clientLineId === e.id);
@@ -165,7 +166,7 @@ export class OrdersService {
 
       const allLines: PricedLine[] = [...sent.map((s) => ({ unitPrice: s.unitPrice, qty: s.qty, taxRateBps: s.taxRateBps })), ...priced];
       const totals = orderTotals(allLines, order.discount);
-      await tx.order.update({ where: { id }, data: { subtotal: totals.subtotal, taxTotal: totals.taxTotal, total: totals.total, version: { increment: 1 } } });
+      await tx.order.update({ where: { id }, data: { subtotal: totals.subtotal, taxTotal: totals.taxTotal, total: totals.total } }); // version already bumped by claimVersion
       await this.audit.recordIn(tx, { action: 'order.items_replace', entity: 'orders', entityId: id, before, after: { ...totals, lines: sent.length + priced.length } });
       return this.get_(tx, id);
     });
@@ -205,7 +206,8 @@ export class OrdersService {
     const tid = requireTenantId();
     return this.prisma.withTenant(tid, async (tx) => {
       const order = await this.mustOpen(tx, id, d.version);
-      await tx.order.update({ where: { id }, data: { status: 'CANCELLED', cancelledAt: new Date(), cancelReason: d.reason, version: { increment: 1 } } });
+      await this.claimVersion(tx, id, d.version ?? order.version);
+      await tx.order.update({ where: { id }, data: { status: 'CANCELLED', cancelledAt: new Date(), cancelReason: d.reason } }); // version already bumped by claimVersion
       await tx.kot.updateMany({ where: { orderId: id, status: { in: ['PENDING', 'PREPARING', 'READY'] } }, data: { status: 'CANCELLED' } });
       if (order.tableId) {
         await tx.restaurantTable.updateMany({ where: { id: order.tableId, currentOrderId: id }, data: { status: 'FREE', statusSince: new Date(), currentOrderId: null, version: { increment: 1 } } });
@@ -216,6 +218,16 @@ export class OrdersService {
   }
 
   // ---------- helpers ----------
+  /**
+   * Optimistic-concurrency claim: atomically bump the version ONLY if it still equals `expected`.
+   * Two concurrent writers with the same version -> exactly one matches a row; the other gets 409.
+   * (A plain read-then-compare is not enough: both would read the same version and both would "win".)
+   */
+  private async claimVersion(tx: Tx, id: string, expected: number) {
+    const c = await tx.order.updateMany({ where: { id, version: expected, status: 'OPEN', ...live }, data: { version: { increment: 1 } } });
+    if (c.count === 0) throw new ConflictException({ message: 'Stale order version', expected });
+  }
+
   private async mustOpen(tx: Tx, id: string, version?: number) {
     const o = await tx.order.findFirst({ where: { id, ...live } });
     if (!o) throw new NotFoundException('Order not found');

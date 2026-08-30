@@ -85,6 +85,80 @@ async function main() {
   const early = await api('POST', `/bills/${b5.id}/payments`, { mode: 'CASH', amount: b5.total, idempotencyKey: `early-${b5.id}`.slice(0, 70) });
   check(early.status === 409, `pay before finalize -> 409 (got ${early.status})`);
 
+  // --- [6] equal-N split shares sum EXACTLY to order subtotal (last absorbs remainder) ---
+  console.log('\n[6] equal-N split — shares sum exact:');
+  const os = await newOrder(outletId, item.id, 1);
+  const S = os.subtotal as number, N = 3;
+  const base = Math.round(S / N);
+  const expShares = [base, base, S - base * (N - 1)]; // splitShares(S,3)
+  const shares: number[] = [];
+  for (let i = 0; i < N; i++) {
+    const sb = (await api('POST', '/bills', { orderId: os.id, splitOf: { index: i, count: N } })).json;
+    shares.push(sb?.subtotal);
+  }
+  check(shares.reduce((a, b) => a + b, 0) === S, `split ${S}/${N} subtotals sum exact (${shares.join('+')} = ${S})`);
+  check(JSON.stringify(shares) === JSON.stringify(expShares), `split shares match splitShares (${shares.join(',')} vs ${expShares.join(',')})`);
+
+  // --- [7] merge two orders into one bill ---
+  console.log('\n[7] merge orders:');
+  const mA = await newOrder(outletId, item.id, 1), mB = await newOrder(outletId, item.id, 2);
+  const mBill = (await api('POST', '/bills', { orderId: mA.id, mergeOrderIds: [mB.id] })).json;
+  check(mBill?.subtotal === mA.subtotal + mB.subtotal, `merged subtotal ${mBill?.subtotal} == ${mA.subtotal}+${mB.subtotal}`);
+
+  // helper: order -> bill -> finalize -> pay full; returns { bill, paymentId, total }
+  const paidBill = async () => {
+    const o = await newOrder(outletId, item.id, 1);
+    const bl = (await api('POST', '/bills', { orderId: o.id })).json;
+    await api('POST', `/bills/${bl.id}/finalize`, {});
+    const pay = await api('POST', `/bills/${bl.id}/payments`, { mode: 'CASH', amount: bl.total, idempotencyKey: `pf-${bl.id}`.slice(0, 70) });
+    return { bill: bl, paymentId: pay.json?.id, total: bl.total };
+  };
+
+  // --- [8] refund idempotency + over-refund ---
+  console.log('\n[8] refund idempotency + over-refund:');
+  const rb = await paidBill();
+  const rk = `rf-${rb.bill.id}`.slice(0, 70);
+  const rf1 = await api('POST', `/payments/${rb.paymentId}/refunds`, { amount: 1000, reason: 'e2e refund', idempotencyKey: rk });
+  const rf2 = await api('POST', `/payments/${rb.paymentId}/refunds`, { amount: 1000, reason: 'e2e refund', idempotencyKey: rk });
+  check(!!rf1.json?.id && (rf1.json?.id === rf2.json?.id || rf2.status === 200), `refund idempotencyKey replay -> same refund (no double)`);
+  const afterRf = (await api('GET', `/bills/${rb.bill.id}`)).json;
+  const refunded = afterRf?.refundTotal ?? afterRf?.refunded ?? afterRf?.totals?.refunded;
+  check(refunded === 1000, `refundTotal=${refunded} == 1000 (not doubled)`);
+  const overRf = await api('POST', `/payments/${rb.paymentId}/refunds`, { amount: rb.total + 100000, reason: 'too much', idempotencyKey: `orf-${rb.bill.id}`.slice(0, 70) });
+  check(overRf.status === 422, `over-refund -> 422 (got ${overRf.status})`);
+
+  // --- [9] non-cash payment without reference -> 422 ---
+  console.log('\n[9] non-cash without reference:');
+  const o9 = await newOrder(outletId, item.id, 1);
+  const b9 = (await api('POST', '/bills', { orderId: o9.id })).json;
+  await api('POST', `/bills/${b9.id}/finalize`, {});
+  const noRef = await api('POST', `/bills/${b9.id}/payments`, { mode: 'UPI', amount: b9.total, idempotencyKey: `nr-${b9.id}`.slice(0, 70) });
+  check(noRef.status === 422, `UPI without reference -> 422 (got ${noRef.status})`);
+
+  // --- [10] void rules: only when net-paid == 0 ---
+  console.log('\n[10] void rules:');
+  const ov = await newOrder(outletId, item.id, 1);
+  const bv = (await api('POST', '/bills', { orderId: ov.id })).json;
+  await api('POST', `/bills/${bv.id}/finalize`, {});
+  const voidUnpaid = await api('POST', `/bills/${bv.id}/void`, { reason: 'e2e void unpaid' });
+  check(voidUnpaid.status === 200 || voidUnpaid.status === 201, `void unpaid (net-paid 0) -> ok (${voidUnpaid.status})`);
+  const pb = await paidBill();
+  const voidPaid = await api('POST', `/bills/${pb.bill.id}/void`, { reason: 'e2e void paid' });
+  check(voidPaid.status === 409, `void with net money -> 409 (got ${voidPaid.status})`);
+
+  // --- [11] day-close reconcile + blocks finalize/pay after close ---
+  console.log('\n[11] day-close reconcile + blocks-after:');
+  const dc = await paidBill(); // a settled bill today
+  const billNow = (await api('GET', `/bills/${dc.bill.id}`)).json;
+  const businessDate = billNow?.businessDate ?? new Date().toISOString().slice(0, 10);
+  const report = await api('POST', '/day-close', { outletId, businessDate });
+  check(report.status === 200 || report.status === 201, `day-close -> ok (${report.status})`);
+  // after close, finalizing a new bill for that outlet+date must be blocked
+  const oAfter = await newOrder(outletId, item.id, 1);
+  const bAfter = (await api('POST', '/bills', { orderId: oAfter.id })).json;
+  const finAfter = await api('POST', `/bills/${bAfter?.id}/finalize`, {});
+  check(finAfter.status === 409, `finalize after day-close -> 409 (got ${finAfter.status})`);
+
   console.log(`\n==== BILLING E2E VERDICT: ${failures === 0 ? 'PASS' : `FAIL (${failures})`} ====`);
   process.exit(failures === 0 ? 0 : 1);
 }
