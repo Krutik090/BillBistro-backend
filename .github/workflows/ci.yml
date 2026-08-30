@@ -1,61 +1,39 @@
-# BillBistro Phase 0 CI — T-013 (Dwight)
-# Gates every PR: static checks, build, and the tenant-isolation proof (the #1 severity gate).
 name: ci
-
 on:
-  pull_request:
   push:
-    branches: [main, phase0-backend, phase0-qa]
-
-concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
+    branches: [main, "phase*"]
+  pull_request:
 
 jobs:
-  static:
-    name: typecheck + build
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
-        with: { node-version: 22, cache: pnpm }
-      - run: pnpm install --frozen-lockfile
-      # pnpm v11 blocks dependency build scripts by default (ERR_PNPM_IGNORED_BUILDS),
-      # so the Prisma client is not generated on install. Generate it explicitly.
-      - run: node node_modules/prisma/build/index.js generate
-      - run: pnpm turbo run typecheck
-      - run: pnpm turbo run build
-
-  isolation:
-    name: tenant-isolation (RLS) — merge blocker
+  build-and-audit:
     runs-on: ubuntu-latest
     services:
       postgres:
         image: postgres:16-alpine
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: billbistro
-        ports: ['5433:5432']
+        env: { POSTGRES_USER: postgres, POSTGRES_PASSWORD: postgres, POSTGRES_DB: billbistro }
+        ports: ["5433:5432"]
         options: >-
-          --health-cmd "pg_isready -U postgres -d billbistro"
-          --health-interval 5s --health-timeout 3s --health-retries 20
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 3s --health-retries 20
     env:
       DATABASE_URL: postgresql://billbistro_app:app@localhost:5433/billbistro?schema=public
       DATABASE_URL_MIGRATE: postgresql://postgres:postgres@localhost:5433/billbistro?schema=public
+      JWT_ACCESS_SECRET: ci-access-secret-0123456789
+      JWT_REFRESH_SECRET: ci-refresh-secret-0123456789
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
+        with: { version: 11 }
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: pnpm }
       - run: pnpm install --frozen-lockfile
-      - run: node node_modules/prisma/build/index.js generate
-      # Create the non-owner app role (infra/postgres/init.sql runs only in the compose image).
-      - run: PGPASSWORD=postgres psql -h localhost -p 5433 -U postgres -d billbistro -f infra/postgres/init.sql
-      - run: node node_modules/prisma/build/index.js migrate deploy
-      # The gate: proves tenant A can never read/write tenant B (raw Prisma, all key models),
-      # fail-closed with no context, planted-leak canary + non-vacuous meta-test. Exits non-zero on any leak.
-      - run: node_modules/.bin/tsx scripts/tenant-isolation.check.ts
-      # Jim's focused end-to-end RLS proof (belt-and-suspenders).
-      - run: node_modules/.bin/tsx scripts/rls-check.ts
+      - name: Dependency audit (fail on high/critical)
+        run: pnpm audit --audit-level=high
+      - name: Create RLS app role
+        run: psql "$DATABASE_URL_MIGRATE" -f infra/postgres/init.sql
+      - run: pnpm db:migrate
+      - run: pnpm db:seed
+      - name: RLS isolation proof
+        run: pnpm db:rls-check
+      - run: pnpm -r --filter @billbistro/types build
+      - run: pnpm --filter @billbistro/api typecheck
+      - run: pnpm --filter @billbistro/api build

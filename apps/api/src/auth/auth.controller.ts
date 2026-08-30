@@ -6,7 +6,8 @@ import { ZodValidationPipe } from '../common/zod.pipe';
 import { env } from '../config/env';
 import { AuthService, TokenPair } from './auth.service';
 import { ACCESS_COOKIE, AuthPrincipal, REFRESH_COOKIE } from './auth.types';
-import { CurrentUser, Public } from './decorators';
+import { AllowAuthenticated, CurrentUser, Public } from './decorators';
+import { Throttle } from '@nestjs/throttler';
 
 type Req = Request & { cookies?: Record<string, string> };
 
@@ -16,6 +17,7 @@ export class AuthController {
   constructor(private readonly auth: AuthService) {}
 
   @Public()
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @Post('login')
   @HttpCode(200)
   @ApiBody({ schema: { example: { tenantSlug: 'demo', email: 'owner@demo.local', password: 'Password123!' } } })
@@ -26,6 +28,7 @@ export class AuthController {
   }
 
   @Public()
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
   @Post('refresh')
   @HttpCode(200)
   async refresh(@Req() req: Req, @Res({ passthrough: true }) res: Response) {
@@ -45,6 +48,7 @@ export class AuthController {
     res.clearCookie(REFRESH_COOKIE, { path: '/v1/auth' });
   }
 
+  @AllowAuthenticated()
   @Get('me')
   me(@CurrentUser() user: AuthPrincipal) {
     return user;

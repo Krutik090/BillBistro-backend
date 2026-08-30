@@ -1,4 +1,5 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { HttpException, HttpStatus, Injectable, UnauthorizedException } from '@nestjs/common';
+import { AuditService } from '../audit/audit.service';
 import { JwtService } from '@nestjs/jwt';
 import argon2 from 'argon2';
 import { createHash, randomUUID } from 'node:crypto';
@@ -19,6 +20,7 @@ export class AuthService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwt: JwtService,
+    private readonly audit: AuditService,
   ) {}
 
   /** tenantSlug + email + password → token pair. Tenant lookup is the one system-context read. */
@@ -32,13 +34,38 @@ export class AuthService {
         include: { userRoles: { where: { deletedAt: null }, include: { role: { include: { permissions: { include: { permission: true } } } } } } },
       }),
     );
-    if (!user || !(await argon2.verify(user.passwordHash, password))) throw new UnauthorizedException('Invalid credentials');
+    if (!user) throw new UnauthorizedException('Invalid credentials');
+    if (user.lockedUntil && user.lockedUntil > new Date()) {
+      await this.audit.record({ tenantId: tenant.id, actorUserId: user.id, action: 'auth.login_locked', entity: 'users', entityId: user.id, ip: meta.ip });
+      throw new HttpException({ message: 'Account temporarily locked', lockedUntil: user.lockedUntil }, HttpStatus.LOCKED);
+    }
+    if (!(await argon2.verify(user.passwordHash, password))) {
+      const failed = user.failedLogins + 1;
+      const lock = failed >= env.LOGIN_MAX_FAILURES;
+      const lockedUntil = lock ? new Date(Date.now() + env.LOGIN_LOCKOUT_MINUTES * 60_000) : null;
+      await this.prisma.withTenant(tenant.id, async (tx) => {
+        await tx.user.update({ where: { id: user.id }, data: { failedLogins: lock ? 0 : failed, lockedUntil } });
+        await this.audit.recordIn(tx, {
+          tenantId: tenant.id,
+          actorUserId: user.id,
+          action: lock ? 'auth.lockout' : 'auth.login_failed',
+          entity: 'users',
+          entityId: user.id,
+          ip: meta.ip,
+          meta: { failed, lockedUntil },
+        });
+      });
+      throw new UnauthorizedException('Invalid credentials');
+    }
 
     const roles = [...new Set(user.userRoles.map((ur) => ur.role.key))];
     const permissions = [...new Set(user.userRoles.flatMap((ur) => ur.role.permissions.map((rp) => rp.permission.key)))];
     const principal: AuthPrincipal = { userId: user.id, tenantId: tenant.id, roles, permissions };
 
-    await this.prisma.withTenant(tenant.id, (tx) => tx.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date() } }));
+    await this.prisma.withTenant(tenant.id, async (tx) => {
+      await tx.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date(), failedLogins: 0, lockedUntil: null } });
+      await this.audit.recordIn(tx, { tenantId: tenant.id, actorUserId: user.id, action: 'auth.login', entity: 'users', entityId: user.id, ip: meta.ip, meta: { ua: meta.ua } });
+    });
     return this.issue(principal, meta);
   }
 

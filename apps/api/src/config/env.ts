@@ -11,6 +11,10 @@ const Env = z.object({
   JWT_REFRESH_SECRET: z.string().min(16),
   JWT_ACCESS_TTL_SECONDS: z.coerce.number().default(900),
   JWT_REFRESH_TTL_DAYS: z.coerce.number().default(30),
+  LOGIN_MAX_FAILURES: z.coerce.number().default(5),
+  LOGIN_LOCKOUT_MINUTES: z.coerce.number().default(15),
+  THROTTLE_TTL_MS: z.coerce.number().default(60_000),
+  THROTTLE_LIMIT: z.coerce.number().default(120),
   COOKIE_SECURE: z
     .string()
     .default('false')
