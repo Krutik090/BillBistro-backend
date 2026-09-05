@@ -3,7 +3,7 @@
  * Designed for CI (isolated runner + fresh Postgres service), which sidesteps the shared
  * node_modules / concurrent `prisma generate` race we hit locally. CI job shape:
  *   1. create app role (infra/postgres/init.sql) + migrate deploy + db:seed  (creates tenant `demo`)
- *   2. node apps/api/dist/main.js &   (or `pnpm --filter @billbistro/api start` in background)
+ *   2. node apps/api/dist/server.js &   (or `pnpm --filter @billbistro/api start` in background)
  *   3. wait for /health, then: pnpm db:hardening-check
  *
  * Proves the T-020 hardening at runtime:
@@ -39,7 +39,7 @@ async function main() {
   const health = await fetch(`${BASE}/health`).then((r) => r.status).catch(() => 0);
   check(health === 200, `API reachable at ${BASE} (health=${health})`);
   if (health !== 200) {
-    console.log('  API not running — start `node apps/api/dist/main.js` against a seeded DB first.');
+    console.log('  API not running — start `node apps/api/dist/server.js` against a seeded DB first.');
     console.log('\n==== HARDENING VERDICT: SKIPPED (no API) ====');
     process.exit(1);
   }

@@ -4,16 +4,10 @@ import cors from 'cors';
 import helmet from 'helmet';
 import swaggerUi from 'swagger-ui-express';
 import { env } from './config/env';
-import { globalRateLimit } from './middleware/rate-limit';
-import { errorHandler, notFoundHandler } from './middleware/error-handler';
-import { buildOpenApiDocument } from './common/openapi';
-import { authRoutes } from './auth/auth.routes';
-import { healthRoutes } from './health/health.routes';
-import { menuRoutes } from './modules/menu/menu.routes';
-import { floorRoutes } from './modules/floor/floor.routes';
-import { outletsRoutes } from './modules/outlets/outlets.routes';
-import { ordersRoutes } from './modules/orders/orders.routes';
-import { billingRoutes } from './modules/billing/billing.routes';
+import { globalRateLimit } from './middlewares/rate-limit.middleware';
+import { errorHandler, notFoundHandler } from './middlewares/error-handler.middleware';
+import { buildOpenApiDocument } from './utils/openapi';
+import { mountRoutes } from './routes';
 
 /**
  * Builds the Express app. Middleware order mirrors the guard chain it replaces:
@@ -30,15 +24,7 @@ export function createApp(): Express {
   app.use(cookieParser());
   app.use(globalRateLimit);
 
-  // health is intentionally outside the /v1 prefix
-  app.use('/health', healthRoutes);
-
-  app.use('/v1/auth', authRoutes);
-  app.use('/v1/menu', menuRoutes);
-  app.use('/v1/floor', floorRoutes);
-  app.use('/v1/outlets', outletsRoutes);
-  app.use('/v1', ordersRoutes);
-  app.use('/v1', billingRoutes);
+  mountRoutes(app);
 
   const openApiDocument = buildOpenApiDocument();
   app.get('/docs.json', (_req, res) => res.json(openApiDocument));

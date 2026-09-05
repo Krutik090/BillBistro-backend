@@ -1,5 +1,5 @@
 /* Money/GST correctness (T-120, Dwight) — verifies the SERVER pure money math
- * (apps/api/src/modules/orders/pricing.ts) against the AGREED spec:
+ * (apps/api/src/utils/pricing.ts) against the AGREED spec:
  *   - amounts are integer paise; tax rates basis points (500 = 5%)
  *   - per-line tax = round(lineTotal * (1 - discountRatio) * bps / 10000)  [discount-before-tax, PER-LINE rounding]
  *   - orderTotals: subtotal = Σ lineTotal; discount clamped to [0, subtotal]; total = subtotal - discount + taxTotal
@@ -10,7 +10,7 @@
  * The spec is re-implemented INDEPENDENTLY below and cross-checked against pricing.ts over
  * fixed golden cases + a wide deterministic sweep. Any mismatch = a real money bug in the server.
  */
-import { lineTotal, lineTax, orderTotals, roundToRupee, splitShares, type PricedLine } from '../apps/api/src/modules/orders/pricing';
+import { lineTotal, lineTax, orderTotals, roundToRupee, splitShares, type PricedLine } from '../apps/api/src/utils/pricing';
 
 let failures = 0;
 const check = (cond: boolean, label: string) => { console.log(`  ${cond ? 'PASS' : 'FAIL'}  ${label}`); if (!cond) failures++; };

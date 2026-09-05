@@ -6,12 +6,20 @@ The four client apps (POS, Dashboard, KDS, QR menu) live in the sibling `billbis
 ## Layout
 
 ```
-apps/api          Express API (auth, tenancy, menu, floor, orders/KOT, billing)
-  src/app.ts        express app assembly (middleware order = rate-limit -> authn -> authz -> tenant ctx)
-  src/common/       errors, route registry (policy is mandatory), Zod validation, OpenAPI generator
-  src/middleware/   auth, permissions (deny-by-default), tenant context (ALS), rate limit, error handler
-  src/services.ts   composition root — explicit `new` wiring instead of a DI container
-  src/modules/*     one folder per domain: <name>.routes.ts + <name>.service.ts + <name>.schemas.ts
+apps/api          Node.js + Express API (auth, tenancy, menu, floor, orders/KOT, billing)
+  src/server.ts       entry point: connect, listen, graceful shutdown
+  src/app.ts          express app assembly (middleware order = rate-limit -> authn -> authz -> tenant ctx)
+  src/routes/         one <name>.routes.ts per domain (path + method + policy + Zod schema + controller fn);
+                       router.ts is the route-registration engine, index.ts mounts everything onto the app
+  src/controllers/    req/res handlers — thin, call into services/
+  src/services/       business logic (money math, state machines, idempotency) — framework-agnostic
+  src/middlewares/    auth, permissions (deny-by-default), tenant context (ALS), rate limit, error handler
+  src/schemas/        Zod request/query schemas per domain
+  src/database/       Prisma client + tenant-scoping helpers (scoped / withTenant / system)
+  src/context/        AsyncLocalStorage request context (tenant id, user, roles)
+  src/utils/          errors, JWT, pricing math, OpenAPI-doc generation
+  src/types/          shared TS types + Express.Request augmentation
+  src/container.ts    composition root — explicit `new` wiring instead of a DI container
 packages/types    shared Zod schemas + TS types
 packages/config   tsconfig presets, design tokens, tailwind theme (consumed by the frontend repo)
 prisma/           schema + migrations (incl. RLS policies) + seed
@@ -89,7 +97,7 @@ curl http://localhost:4000/health   # {"status":"ok","db":"up",...}
 | Orders/KOT | `POST /v1/orders` (clientKey idempotent, server-priced), `GET /v1/orders[/:id]`, `PATCH /v1/orders/:id/items` (KOT-sent lines immutable, `version`), `POST /v1/orders/:id/kots`, `POST /v1/orders/:id/cancel`, `GET /v1/kots` (KDS), `PATCH /v1/kots/:id/status` | `orders.*`, `kots.*` |
 | Billing | `POST /v1/bills` (merge `mergeOrderIds`, split `splitOf`, discount-before-tax, tip; clientKey idempotent), `PATCH /v1/bills/:id` (draft), `POST /v1/bills/:id/finalize`, `POST /v1/bills/:id/void`, `POST /v1/bills/:id/payments` (idempotencyKey), `POST /v1/payments/:id/refunds`, `GET /v1/bills/:id/receipt`, `GET`/`POST /v1/day-close` (Z-report; a closed date blocks finalize/pay) | `bills.*`, `payments.*`, `reports.read` |
 
-Money math: `apps/api/src/modules/orders/pricing.ts` + `BillingService.compute` (int paise; per-line GST by bps after proportional pre-tax discount; CGST/SGST halves; tip after tax; grand total rounded to the rupee; split shares sum exactly). Full OpenAPI at `/docs`. Errors share one shape: `{statusCode, error, message, requestId, path}` (+`issues[]` on 400).
+Money math: `apps/api/src/utils/pricing.ts` + `BillingService.compute` (int paise; per-line GST by bps after proportional pre-tax discount; CGST/SGST halves; tip after tax; grand total rounded to the rupee; split shares sum exactly). Full OpenAPI at `/docs`. Errors share one shape: `{statusCode, error, message, requestId, path}` (+`issues[]` on 400).
 Hardening: deny-by-default RBAC, 10 logins/min/IP, lockout after 5 failures (423), append-only `audit_logs`.
 
 ## Adding a migration (non-interactive workflow)
