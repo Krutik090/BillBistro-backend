@@ -21,37 +21,35 @@ jobs:
       JWT_REFRESH_SECRET: ci-refresh-secret-0123456789
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-        with: { version: 11 }
       - uses: actions/setup-node@v4
-        with: { node-version: 22, cache: pnpm }
-      - run: pnpm install --frozen-lockfile
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
       - name: Dependency audit (fail on high/critical)
-        run: pnpm audit --audit-level=high
+        run: npm audit --audit-level=high
       - name: Create RLS app role
         run: psql "$DATABASE_URL_MIGRATE" -f infra/postgres/init.sql
-      - run: pnpm db:migrate
-      - run: pnpm db:seed
+      - run: npm run db:migrate
+      - run: npm run db:seed
       - name: RLS isolation proof (basic)
-        run: pnpm db:rls-check
+        run: npm run db:rls-check
       - name: Money math gate (MERGE BLOCKER — pure/deterministic, scripts/money-check.ts)
-        run: pnpm check:money
+        run: npm run check:money
       - name: Tenant isolation gate (MERGE BLOCKER — RLS coverage guard + planted-leak canary + per-model sweep)
-        run: pnpm db:iso-check
-      - run: pnpm -r --filter @billbistro/types build
-      - run: pnpm --filter @billbistro/api typecheck
-      - run: pnpm --filter @billbistro/api build
+        run: npm run db:iso-check
+      - run: npm run build --workspace=@billbistro/types
+      - run: npm run typecheck --workspace=@billbistro/api
+      - run: npm run build --workspace=@billbistro/api
       - name: Start API for behavioural probes
         run: |
           node apps/api/dist/server.js > api.log 2>&1 &
           for i in $(seq 1 60); do curl -sf http://localhost:4000/health && break; sleep 1; done
       - name: Hardening probes (423 lockout / 429 throttle) — NON-blocking until proven stable
         continue-on-error: true
-        run: pnpm db:hardening-check
+        run: npm run db:hardening-check
         env: { API_URL: http://localhost:4000 }
       - name: Orders runtime e2e (T-102 totals / idempotency / concurrency) — NON-blocking until proven stable
         continue-on-error: true
-        run: pnpm db:orders-e2e
+        run: npm run db:orders-e2e
         env: { API_URL: http://localhost:4000 }
       - name: API log (on probe failure)
         if: always()

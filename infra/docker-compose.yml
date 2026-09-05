@@ -42,7 +42,7 @@ services:
       postgres: { condition: service_healthy }
       redis: { condition: service_healthy }
     # migrate + seed on boot, then serve
-    command: sh -c "pnpm prisma migrate deploy && pnpm db:seed && node apps/api/dist/server.js"
+    command: sh -c "npm run db:migrate && npm run db:seed && node apps/api/dist/server.js"
 
 volumes:
   pgdata:

@@ -3,7 +3,7 @@
  * Seed + reset for the Vitest isolation/integration suites. Matches the real schema
  * (schema.prisma @ ccd8ce0). Cross-tenant seeding uses the owner role under app.bypass_rls.
  *
- * Enable the Vitest harness with: pnpm add -D vitest supertest @types/supertest
+ * Enable the Vitest harness with: npm install -D vitest supertest @types/supertest
  * (offline-blocked today; the DB-layer proof runs via scripts/tenant-isolation.check.ts).
  */
 import { PrismaClient, Prisma } from '@prisma/client';

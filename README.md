@@ -31,13 +31,13 @@ docs/qa/          security gate + test-strategy notes
 ## Run (local dev)
 
 ```bash
-pnpm install
+npm install
 cp .env.example .env
 docker compose -f infra/docker-compose.yml up -d postgres redis
-pnpm db:migrate          # prisma migrate deploy (uses DATABASE_URL_MIGRATE = table owner)
-pnpm db:seed             # demo tenant: slug demo, owner@demo.local / Password123!
-pnpm db:rls-check        # must print "RLS CHECK PASSED"
-pnpm api:dev             # http://localhost:4000/health  docs: /docs
+npm run db:migrate          # prisma migrate deploy (uses DATABASE_URL_MIGRATE = table owner)
+npm run db:seed             # demo tenant: slug demo, owner@demo.local / Password123!
+npm run db:rls-check        # must print "RLS CHECK PASSED"
+npm run api:dev             # http://localhost:4000/health  docs: /docs
 # NOTE: postgres is published on host port 5433 (5432 is commonly taken by a local install).
 ```
 
@@ -82,7 +82,7 @@ Routes: `POST /v1/auth/login|refresh|logout`, `GET /v1/auth/me`.
 ## Verify (once a DB is reachable)
 
 ```bash
-pnpm db:migrate && pnpm db:seed && pnpm db:rls-check
+npm run db:migrate && npm run db:seed && npm run db:rls-check
 curl http://localhost:4000/health   # {"status":"ok","db":"up",...}
 ```
 
@@ -106,11 +106,11 @@ Hardening: deny-by-default RBAC, 10 logins/min/IP, lockout after 5 failures (423
 
 ```bash
 docker exec billbistro-postgres-1 psql -U postgres -qc "CREATE DATABASE billbistro_shadow"
-pnpm prisma migrate diff --from-migrations prisma/migrations --to-schema-datamodel prisma/schema.prisma \
+npx prisma migrate diff --from-migrations prisma/migrations --to-schema-datamodel prisma/schema.prisma \
   --shadow-database-url postgresql://postgres:postgres@localhost:5433/billbistro_shadow --script \
   > prisma/migrations/<YYYYMMDDHHMMSS>_<name>/migration.sql
 # then append the RLS block for any NEW tenant table (copy from an earlier migration) and:
-pnpm db:migrate && pnpm db:generate
+npm run db:migrate && npm run db:generate
 ```
 Rule: every new table has `tenant_id` and appears in an RLS block; `scripts/rls-check.ts` must stay green.
 
@@ -123,18 +123,18 @@ Built and smoke-verified on `phase1-backend`:
 - **Floor** — sections, tables, occupancy state machine with optimistic versioning.
 - **Orders/KOT** — server-priced lines, idempotent create, KOT routing + KDS feed, immutable sent lines, cancel.
 - **Billing** — split (equal-N) / merge bills, discount-before-tax, per-line GST (CGST/SGST), tip, rupee round-off, cash/UPI/card payments (idempotent), refunds, void, receipt payload, day-close Z-report.
-- **Gates (CI merge blockers):** `pnpm check:money` (pure money math) and `pnpm db:iso-check` (RLS coverage + cross-tenant sweep); `pnpm db:rls-check` and the 423/429 hardening probe run as extra checks.
+- **Gates (CI merge blockers):** `npm run check:money` (pure money math) and `npm run db:iso-check` (RLS coverage + cross-tenant sweep); `npm run db:rls-check` and the 423/429 hardening probe run as extra checks.
 
 Not built yet: by-item / by-seat split bills, reports (T-104), payment gateway, realtime (WebSocket) KDS push, tenant self-serve onboarding.
 
 ### Run the full stack
 
 ```bash
-pnpm install && cp .env.example .env
+npm install && cp .env.example .env
 docker compose -f infra/docker-compose.yml up -d postgres redis      # postgres on host :5433
-pnpm db:migrate && pnpm db:seed                                       # demo tenant + menu + floor
-pnpm check:money && pnpm db:iso-check                                 # gates (both must PASS)
-pnpm api:dev                                                          # API :4000, Swagger /docs
+npm run db:migrate && npm run db:seed                                       # demo tenant + menu + floor
+npm run check:money && npm run db:iso-check                                 # gates (both must PASS)
+npm run api:dev                                                          # API :4000, Swagger /docs
 # frontends: see the billbistro-frontend repo (POS :3000, Dashboard :3001, KDS :3002, QR :3003)
 ```
 Login: tenant `demo`, `owner@demo.local` / `Password123!`. Try: `GET /v1/outlets` → `GET /v1/menu/outlets/:id/effective` → `POST /v1/orders` → `POST /v1/orders/:id/kots` → `POST /v1/bills` → `/finalize` → `/payments` → `GET /v1/bills/:id/receipt` → `POST /v1/day-close`.

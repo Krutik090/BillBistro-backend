@@ -1,6 +1,6 @@
 import { defineConfig } from 'vitest/config';
 
-// Enable with: pnpm add -D vitest supertest @types/supertest
+// Enable with: npm install -D vitest supertest @types/supertest
 export default defineConfig({
   test: {
     include: ['test/**/*.spec.ts'],

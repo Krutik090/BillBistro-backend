@@ -3,7 +3,7 @@
  * Designed for CI (isolated runner + fresh seeded Postgres), which sidesteps the shared
  * node_modules / concurrent `prisma generate` race we hit locally. CI job shape (like the
  * hardening probe): migrate + db:seed (creates tenant `demo` + sample menu), start
- * `node apps/api/dist/server.js`, wait for /health, then `pnpm db:orders-e2e`.
+ * `node apps/api/dist/server.js`, wait for /health, then `npm run db:orders-e2e`.
  *
  * Verifies (T-102 Orders/KOT):
  *   1. server totals == agreed spec for varied inputs (base, qty>1, +variant, +modifiers, multi-line);

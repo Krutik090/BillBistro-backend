@@ -3,8 +3,8 @@
  * Designed for CI (isolated runner + fresh Postgres service), which sidesteps the shared
  * node_modules / concurrent `prisma generate` race we hit locally. CI job shape:
  *   1. create app role (infra/postgres/init.sql) + migrate deploy + db:seed  (creates tenant `demo`)
- *   2. node apps/api/dist/server.js &   (or `pnpm --filter @billbistro/api start` in background)
- *   3. wait for /health, then: pnpm db:hardening-check
+ *   2. node apps/api/dist/server.js &   (or `npm run start --workspace=@billbistro/api` in background)
+ *   3. wait for /health, then: npm run db:hardening-check
  *
  * Proves the T-020 hardening at runtime:
  *   - 423 LOCKED after LOGIN_MAX_FAILURES (5) bad passwords for a real user

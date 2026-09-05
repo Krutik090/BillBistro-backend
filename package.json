@@ -1,7 +1,8 @@
 {
   "name": "billbistro",
   "private": true,
-  "packageManager": "pnpm@11.17.0",
+  "packageManager": "npm@10.9.3",
+  "workspaces": ["apps/*", "packages/*"],
   "scripts": {
     "build": "turbo run build",
     "dev": "turbo run dev",
@@ -13,7 +14,7 @@
     "db:migrate:dev": "prisma migrate dev",
     "db:seed": "tsx prisma/seed.ts",
     "db:rls-check": "tsx scripts/rls-check.ts",
-    "api:dev": "pnpm --filter @billbistro/api dev",
+    "api:dev": "npm run dev --workspace=@billbistro/api",
     "db:iso-check": "tsx scripts/tenant-isolation.check.ts",
     "db:hardening-check": "tsx scripts/hardening-check.ts",
     "check:money": "tsx scripts/money-check.ts",
@@ -34,5 +35,10 @@
   "prisma": {
     "schema": "prisma/schema.prisma",
     "seed": "tsx prisma/seed.ts"
+  },
+  "overrides": {
+    "@types/express": "^4.17.21",
+    "deepmerge-ts": "^8.0.2",
+    "qs": "^6.16.0"
   }
 }

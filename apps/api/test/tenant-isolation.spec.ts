@@ -1,7 +1,7 @@
 /**
  * apps/api/test/tenant-isolation.spec.ts — BillBistro T-013 (Dwight)
  * Vitest mirror of scripts/tenant-isolation.check.ts (the DB-layer gate that runs today).
- * Enable with: pnpm add -D vitest supertest @types/supertest   (offline-blocked as of 2026-08-30).
+ * Enable with: npm install -D vitest supertest @types/supertest   (offline-blocked as of 2026-08-30).
  * Run: node node_modules/prisma/build/index.js generate && vitest run apps/api/test
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
