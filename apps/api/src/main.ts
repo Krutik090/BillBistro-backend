@@ -1,33 +1,26 @@
-import 'reflect-metadata';
-import { NestFactory } from '@nestjs/core';
-import type { NestExpressApplication } from '@nestjs/platform-express';
-import { Logger } from '@nestjs/common';
-import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
-import cookieParser from 'cookie-parser';
-import helmet from 'helmet';
-import { AppModule } from './app.module';
+import { createApp } from './app';
 import { env } from './config/env';
-import { AllExceptionsFilter } from './common/all-exceptions.filter';
+import { prisma } from './prisma/prisma.service';
 
 async function bootstrap() {
-  const app = await NestFactory.create<NestExpressApplication>(AppModule, { bufferLogs: false });
-  app.use(helmet());
-  app.use(cookieParser());
-  app.enableCors({ origin: env.CORS_ORIGINS, credentials: true });
-  app.setGlobalPrefix('v1', { exclude: ['health'] });
-  app.useGlobalFilters(new AllExceptionsFilter());
-  app.set('trust proxy', 1); // correct client IP for throttling/lockout behind the LB
-  app.enableShutdownHooks();
+  await prisma.$connect();
 
-  const doc = new DocumentBuilder()
-    .setTitle('BillBistro API')
-    .setVersion('0.0.1')
-    .addCookieAuth('access_token')
-    .addBearerAuth()
-    .build();
-  SwaggerModule.setup('docs', app, SwaggerModule.createDocument(app, doc));
+  const server = createApp().listen(env.API_PORT, () => {
+    console.log(`API on http://localhost:${env.API_PORT}  docs: /docs  health: /health`);
+  });
 
-  await app.listen(env.API_PORT);
-  new Logger('bootstrap').log(`API on http://localhost:${env.API_PORT}  docs: /docs  health: /health`);
+  // Drain in-flight requests, then release the connection pool.
+  const shutdown = (signal: string) => {
+    console.log(`${signal} received — shutting down`);
+    server.close(() => {
+      void prisma.$disconnect().finally(() => process.exit(0));
+    });
+  };
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.on('SIGINT', () => shutdown('SIGINT'));
 }
-bootstrap();
+
+bootstrap().catch((err) => {
+  console.error('Failed to start API', err);
+  process.exit(1);
+});

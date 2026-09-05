@@ -1,4 +1,4 @@
-import { ConflictException, Injectable, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
+import { ConflictException, NotFoundException, UnprocessableEntityException } from '../../common/errors';
 import { Prisma } from '@prisma/client';
 import { AuditService } from '../../audit/audit.service';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -27,7 +27,6 @@ export function businessDateOf(at: Date, timeZone: string): string {
  * Bill = frozen, share-scaled snapshot of one (or several merged) orders' lines with GST breakdown.
  * All math here; the client only ever sends discount / tip / payment.amount, which are validated.
  */
-@Injectable()
 export class BillingService {
   constructor(
     private readonly prisma: PrismaService,

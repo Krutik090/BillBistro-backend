@@ -1,4 +1,4 @@
-import { ConflictException, Injectable, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
+import { ConflictException, NotFoundException, UnprocessableEntityException } from '../../common/errors';
 import { Prisma } from '@prisma/client';
 import { AuditService } from '../../audit/audit.service';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -38,7 +38,6 @@ interface PricedInput extends PricedLine {
  * Orders + KOTs. The server is the money authority: every line is re-priced from the catalogue
  * (outlet price → variant delta → modifier prices), totals are computed here, never trusted from the client.
  */
-@Injectable()
 export class OrdersService {
   constructor(
     private readonly prisma: PrismaService,

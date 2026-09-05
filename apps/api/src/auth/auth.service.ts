@@ -1,6 +1,6 @@
-import { HttpException, HttpStatus, Injectable, UnauthorizedException } from '@nestjs/common';
+import { HttpException, UnauthorizedException } from '../common/errors';
 import { AuditService } from '../audit/audit.service';
-import { JwtService } from '@nestjs/jwt';
+import type { JwtService } from '../common/jwt';
 import argon2 from 'argon2';
 import { createHash, randomUUID } from 'node:crypto';
 import { env } from '../config/env';
@@ -15,7 +15,6 @@ export interface TokenPair {
 
 const sha256 = (s: string) => createHash('sha256').update(s).digest('hex');
 
-@Injectable()
 export class AuthService {
   constructor(
     private readonly prisma: PrismaService,
@@ -37,7 +36,7 @@ export class AuthService {
     if (!user) throw new UnauthorizedException('Invalid credentials');
     if (user.lockedUntil && user.lockedUntil > new Date()) {
       await this.audit.record({ tenantId: tenant.id, actorUserId: user.id, action: 'auth.login_locked', entity: 'users', entityId: user.id, ip: meta.ip });
-      throw new HttpException({ message: 'Account temporarily locked', lockedUntil: user.lockedUntil }, HttpStatus.LOCKED);
+      throw new HttpException({ message: 'Account temporarily locked', lockedUntil: user.lockedUntil }, 423);
     }
     if (!(await argon2.verify(user.passwordHash, password))) {
       const failed = user.failedLogins + 1;

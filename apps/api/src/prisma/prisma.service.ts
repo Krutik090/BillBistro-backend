@@ -1,4 +1,3 @@
-import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { Prisma, PrismaClient } from '@prisma/client';
 import { requireTenantId } from '../tenancy/tenant-context';
 
@@ -35,16 +34,8 @@ export type TenantClient = ReturnType<typeof createTenantClient>;
  * The connection role (billbistro_app) has no BYPASSRLS, so a forgotten scope yields zero rows,
  * never another tenant's rows.
  */
-@Injectable()
-export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
+export class PrismaService extends PrismaClient {
   readonly scoped: TenantClient = createTenantClient(this);
-
-  async onModuleInit() {
-    await this.$connect();
-  }
-  async onModuleDestroy() {
-    await this.$disconnect();
-  }
 
   withTenant<T>(tenantId: string, fn: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> {
     return this.$transaction(async (tx) => {
@@ -60,3 +51,6 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
     });
   }
 }
+
+/** Single instance for the process — services receive it explicitly instead of via DI. */
+export const prisma = new PrismaService();

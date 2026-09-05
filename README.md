@@ -1,12 +1,17 @@
 # BillBistro — backend
 
-Multi-tenant restaurant POS / management SaaS — the NestJS API. See `PLAN.md` (authoritative).
+Multi-tenant restaurant POS / management SaaS — the Node.js/Express API. See `PLAN.md` (authoritative).
 The four client apps (POS, Dashboard, KDS, QR menu) live in the sibling `billbistro-frontend` repo.
 
 ## Layout
 
 ```
-apps/api          NestJS modular monolith (auth, tenancy, menu, floor, orders/KOT, billing)
+apps/api          Express API (auth, tenancy, menu, floor, orders/KOT, billing)
+  src/app.ts        express app assembly (middleware order = rate-limit -> authn -> authz -> tenant ctx)
+  src/common/       errors, route registry (policy is mandatory), Zod validation, OpenAPI generator
+  src/middleware/   auth, permissions (deny-by-default), tenant context (ALS), rate limit, error handler
+  src/services.ts   composition root — explicit `new` wiring instead of a DI container
+  src/modules/*     one folder per domain: <name>.routes.ts + <name>.service.ts + <name>.schemas.ts
 packages/types    shared Zod schemas + TS types
 packages/config   tsconfig presets, design tokens, tailwind theme (consumed by the frontend repo)
 prisma/           schema + migrations (incl. RLS policies) + seed
@@ -50,7 +55,7 @@ curl -b c.txt http://localhost:4000/v1/auth/me
   where `app_current_tenant()` reads the transaction-local GUC `app.tenant_id`.
 - The API connects as `billbistro_app` (**NOSUPERUSER, NOBYPASSRLS**, not the table owner).
   Migrations/seed use `DATABASE_URL_MIGRATE` (owner).
-- In code: `prisma.scoped.<model>` (tenant from request context, set by `TenantContextInterceptor`
+- In code: `prisma.scoped.<model>` (tenant from request context, set by the tenant-context middleware
   from the JWT), `prisma.withTenant(tenantId, fn)` for multi-step transactions,
   `prisma.system(fn)` (sets `app.bypass_rls=on`) **only** for platform paths such as
   tenant lookup at login.
@@ -60,7 +65,10 @@ curl -b c.txt http://localhost:4000/v1/auth/me
 
 JWT access (15m) + rotating refresh (30d, hashed in `refresh_tokens`), both httpOnly cookies
 (`access_token` on `/`, `refresh_token` on `/v1/auth`). Bearer header also accepted.
-RBAC: `@RequirePermissions('menu.write')` → `PermissionsGuard` checks the `perms` claim.
+RBAC is **deny-by-default and structural**: every route is declared through `makeRouter([...])`, and
+`policy` is a required field — `PUBLIC`, `AUTHENTICATED`, or `permissions('menu.write', ...)`, checked
+against the `perms` claim. A route cannot be registered without stating its policy, so "forgot to
+guard it" is a compile error rather than an open endpoint.
 Routes: `POST /v1/auth/login|refresh|logout`, `GET /v1/auth/me`.
 
 ## Verify (once a DB is reachable)

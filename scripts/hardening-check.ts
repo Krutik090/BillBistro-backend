@@ -51,9 +51,11 @@ async function main() {
   //  call  11 : 11th login in the window -> 429 (throttle limit 10/min)
   console.log('\n[lockout 423 + rate-limit 429] combined 11-call login sequence:');
   const status: number[] = [];
-  for (let i = 0; i < 5; i++) status.push(await login({ tenantSlug: SLUG, email: EMAIL, password: `wrong-${i}` }));
+  // NOTE: every password here must satisfy LoginRequest (min 8 chars), otherwise the request is
+  // rejected as a 400 at the validation boundary and never reaches the failed-login counter.
+  for (let i = 0; i < 5; i++) status.push(await login({ tenantSlug: SLUG, email: EMAIL, password: `wrong-pass-${i}` }));
   status.push(await login({ tenantSlug: SLUG, email: EMAIL, password: 'wrong-again' })); // call 6
-  for (let i = 7; i <= 11; i++) status.push(await login({ tenantSlug: 'no-such-tenant', email: 'x@x.tld', password: 'x' }));
+  for (let i = 7; i <= 11; i++) status.push(await login({ tenantSlug: 'no-such-tenant', email: 'x@x.tld', password: 'xxxxxxxx' }));
   console.log('  statuses(1..11):', status.join(','));
   check(status[5] === 423, `call 6: locked account -> 423 (got ${status[5]})`);
   check(status[10] === 429, `call 11: rate limit -> 429 (got ${status[10]})`);

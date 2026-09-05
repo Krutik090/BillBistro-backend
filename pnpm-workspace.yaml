@@ -9,3 +9,7 @@ allowBuilds:
   argon2: true
   esbuild: true
   "@scarf/scarf": false
+# @types/swagger-ui-express floats @types/express, which otherwise resolves v5 alongside our v4
+# runtime and makes the two Request types incompatible. Pin one copy for the whole workspace.
+overrides:
+  "@types/express": "^4.17.21"

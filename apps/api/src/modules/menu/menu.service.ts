@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { NotFoundException } from '../../common/errors';
 import { Prisma } from '@prisma/client';
 import { AuditService } from '../../audit/audit.service';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -16,7 +16,6 @@ export function scheduleOpen(s: { daysMask: number; startMinute: number; endMinu
   return m >= s.startMinute && m < s.endMinute;
 }
 
-@Injectable()
 export class MenuService {
   constructor(
     private readonly prisma: PrismaService,

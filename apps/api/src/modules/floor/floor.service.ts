@@ -1,4 +1,4 @@
-import { ConflictException, Injectable, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
+import { ConflictException, NotFoundException, UnprocessableEntityException } from '../../common/errors';
 import { PrismaService } from '../../prisma/prisma.service';
 import { requireTenantId } from '../../tenancy/tenant-context';
 import * as S from './floor.schemas';
@@ -15,7 +15,6 @@ const TRANSITIONS: Record<S.TableStatus, S.TableStatus[]> = {
   BLOCKED: ['FREE'],
 };
 
-@Injectable()
 export class FloorService {
   constructor(private readonly prisma: PrismaService) {}
   private get db() {

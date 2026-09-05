@@ -3,9 +3,7 @@
   "compilerOptions": {
     "module": "CommonJS",
     "moduleResolution": "Node",
-    "emitDecoratorMetadata": true,
-    "experimentalDecorators": true,
     "declaration": false,
-    "removeComments": true
+    "removeComments": false
   }
 }

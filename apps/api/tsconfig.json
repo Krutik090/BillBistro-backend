@@ -1,5 +1,5 @@
 {
-  "extends": "@billbistro/config/tsconfig/nest.json",
+  "extends": "@billbistro/config/tsconfig/node.json",
   "compilerOptions": {
     "outDir": "./dist",
     "baseUrl": "./",

@@ -1,4 +1,3 @@
-import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { currentContext } from '../tenancy/tenant-context';
@@ -20,7 +19,6 @@ export interface AuditEntry {
  * only allows insert+select). Always write inside the same transaction as the money mutation
  * so the log cannot diverge from the data.
  */
-@Injectable()
 export class AuditService {
   constructor(private readonly prisma: PrismaService) {}
 
