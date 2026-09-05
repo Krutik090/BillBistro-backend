@@ -1,22 +1,18 @@
-# BillBistro
+# BillBistro — backend
 
-Multi-tenant restaurant POS / management SaaS. See `PLAN.md` (authoritative).
-
-> **Status (Phase 0):** backend scaffold committed. **DB verification pending** — the
-> RLS proof (`pnpm db:rls-check`), migrations and seed have not yet been run on this
-> machine because Docker image pulls were blocked by the local network. See "Verify" below.
+Multi-tenant restaurant POS / management SaaS — the NestJS API. See `PLAN.md` (authoritative).
+The four client apps (POS, Dashboard, KDS, QR menu) live in the sibling `billbistro-frontend` repo.
 
 ## Layout
 
 ```
-apps/api          NestJS modular monolith (auth, tenancy, menu/orders stubs)
-apps/{pos,dashboard,kds,qr}   frontends (Pam)
+apps/api          NestJS modular monolith (auth, tenancy, menu, floor, orders/KOT, billing)
 packages/types    shared Zod schemas + TS types
-packages/config   tsconfig presets, design tokens, tailwind theme
-packages/ui       shared component library (Pam)
+packages/config   tsconfig presets, design tokens, tailwind theme (consumed by the frontend repo)
 prisma/           schema + migrations (incl. RLS policies) + seed
 infra/            docker-compose (postgres 16 + redis 7 + api), api.Dockerfile
-scripts/          rls-check.ts — proves cross-tenant isolation through the app role
+scripts/          rls-check.ts, tenant-isolation.check.ts, money-check.ts, hardening-check.ts, orders-e2e.ts, billing-e2e.ts
+docs/qa/          security gate + test-strategy notes
 ```
 
 ## Run (local dev)
@@ -123,6 +119,6 @@ docker compose -f infra/docker-compose.yml up -d postgres redis      # postgres 
 pnpm db:migrate && pnpm db:seed                                       # demo tenant + menu + floor
 pnpm check:money && pnpm db:iso-check                                 # gates (both must PASS)
 pnpm api:dev                                                          # API :4000, Swagger /docs
-# frontends (Pam): pnpm --filter @billbistro/pos dev  /  @billbistro/dashboard dev
+# frontends: see the billbistro-frontend repo (POS :3000, Dashboard :3001, KDS :3002, QR :3003)
 ```
 Login: tenant `demo`, `owner@demo.local` / `Password123!`. Try: `GET /v1/outlets` → `GET /v1/menu/outlets/:id/effective` → `POST /v1/orders` → `POST /v1/orders/:id/kots` → `POST /v1/bills` → `/finalize` → `/payments` → `GET /v1/bills/:id/receipt` → `POST /v1/day-close`.

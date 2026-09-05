@@ -1,1 +1,0 @@
-{ "extends": "@billbistro/config/tsconfig/next.json", "include": ["src"] }

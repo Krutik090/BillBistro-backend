@@ -1,5 +1,0 @@
-{
-  "extends": "@billbistro/config/tsconfig/next.json",
-  "compilerOptions": { "jsx": "react-jsx", "types": ["react", "react-dom"] },
-  "include": ["src", ".storybook"]
-}
