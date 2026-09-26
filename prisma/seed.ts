@@ -18,11 +18,12 @@ async function main() {
     const permId = Object.fromEntries(perms.map((p) => [p.key, p.id]));
 
     const slug = process.env.SEED_TENANT_SLUG ?? 'demo';
+    const tenantName = process.env.SEED_TENANT_NAME ?? 'Demo Restaurant';
     let tenant = await tx.tenant.findUnique({ where: { slug } });
     if (!tenant) {
       // tenant_id is a self-reference; create with a pre-generated id
       const id = crypto.randomUUID();
-      tenant = await tx.tenant.create({ data: { id, tenantId: id, slug, name: 'Demo Restaurant' } });
+      tenant = await tx.tenant.create({ data: { id, tenantId: id, slug, name: tenantName } });
     }
     const tid = tenant.id;
 
@@ -44,19 +45,27 @@ async function main() {
     const outlet = await tx.outlet.upsert({
       where: { tenantId_code: { tenantId: tid, code: 'MAIN' } },
       update: {},
-      create: { tenantId: tid, code: 'MAIN', name: 'Main Outlet', address: 'Ahmedabad, GJ' },
+      create: { tenantId: tid, code: 'MAIN', name: process.env.SEED_OUTLET_NAME ?? 'Main Outlet', address: process.env.SEED_OUTLET_ADDRESS ?? 'Ahmedabad, GJ' },
     });
 
     const email = process.env.SEED_OWNER_EMAIL ?? 'owner@demo.local';
     const password = process.env.SEED_OWNER_PASSWORD ?? 'Password123!';
+    const ownerName = process.env.SEED_OWNER_NAME ?? 'Demo Owner';
     const user = await tx.user.upsert({
       where: { tenantId_email: { tenantId: tid, email } },
       update: {},
-      create: { tenantId: tid, email, name: 'Demo Owner', passwordHash: await argon2.hash(password) },
+      create: { tenantId: tid, email, name: ownerName, passwordHash: await argon2.hash(password) },
     });
     const ownerRole = await tx.role.findUniqueOrThrow({ where: { tenantId_key: { tenantId: tid, key: 'owner' } } });
     const existing = await tx.userRole.findFirst({ where: { userId: user.id, roleId: ownerRole.id, outletId: null } });
     if (!existing) await tx.userRole.create({ data: { tenantId: tid, userId: user.id, roleId: ownerRole.id } });
+
+    // Sample menu + floor layout are placeholder demo data, not something a real restaurant wants —
+    // skip with SEED_SAMPLE_DATA=false once you're ready to build your own menu from the dashboard.
+    if (process.env.SEED_SAMPLE_DATA === 'false') {
+      console.log(`seeded tenant=${slug} (${tid}) outlet=${outlet.code} owner=${email} / ${password} (SEED_SAMPLE_DATA=false — no sample menu/floor)`);
+      return;
+    }
 
     // ----- sample menu (idempotent by sku / name) -----
     const cat = async (name: string, sortOrder: number, scheduleId?: string) =>

@@ -1,4 +1,5 @@
-import { makeRouter, permissions, type RouteSpec } from './router';
+import { makeRouter, permissions, PUBLIC, type RouteSpec } from './router';
+import { bindPublicTenantContext } from '../middlewares/tenant-context.middleware';
 import * as menuController from '../controllers/menu.controller';
 import * as S from '../schemas/menu.schemas';
 
@@ -12,13 +13,15 @@ const tags = ['menu'];
  */
 const specs: RouteSpec[] = [
   // ----- effective menu for POS / QR -----
+  // PUBLIC: this is the QR customer menu too, and QR customers have no staff session.
   {
     method: 'get',
     path: '/outlets/:outletId/effective',
-    policy: READ,
+    policy: PUBLIC,
+    middleware: [bindPublicTenantContext],
     uuidParams: ['outletId'],
     tags,
-    summary: 'Resolved menu for an outlet (schedules, per-outlet prices, availability)',
+    summary: 'Resolved menu for an outlet (schedules, per-outlet prices, availability) — public, used by POS and the QR menu',
     handler: menuController.effective,
   },
 

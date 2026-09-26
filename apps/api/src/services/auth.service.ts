@@ -1,13 +1,11 @@
-import { ConflictException, HttpException, UnauthorizedException } from '../utils/errors';
+import { HttpException, UnauthorizedException } from '../utils/errors';
 import { AuditService } from './audit.service';
 import type { JwtService } from '../utils/jwt';
 import argon2 from 'argon2';
 import { createHash, randomUUID } from 'node:crypto';
 import { env } from '../config/env';
 import { PrismaService } from '../database/client';
-import { ROLE_PERMISSIONS } from '../config/roles';
 import type { AccessClaims, AuthPrincipal, RefreshClaims } from '../types/auth.types';
-import type { SignupRequest } from '@billbistro/types';
 
 export interface TokenPair {
   accessToken: string;
@@ -67,43 +65,6 @@ export class AuthService {
       await tx.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date(), failedLogins: 0, lockedUntil: null } });
       await this.audit.recordIn(tx, { tenantId: tenant.id, actorUserId: user.id, action: 'auth.login', entity: 'users', entityId: user.id, ip: meta.ip, meta: { ua: meta.ua } });
     });
-    return this.issue(principal, meta);
-  }
-
-  /**
-   * Self-serve onboarding (T-106): tenant + the standard role set + owner user + first outlet,
-   * provisioned in one transaction, then auto-login (same TokenPair shape as login/refresh).
-   * Runs under app.bypass_rls — there is no tenant yet for the row-level policies to scope to.
-   */
-  async signup(input: SignupRequest, meta: { ua?: string; ip?: string }): Promise<TokenPair> {
-    const slug = input.tenantSlug.toLowerCase();
-    const email = input.email.toLowerCase();
-    const passwordHash = await argon2.hash(input.password);
-
-    const principal = await this.prisma.system(async (tx) => {
-      if (await tx.tenant.findFirst({ where: { slug } })) throw new ConflictException('That restaurant URL is already taken');
-
-      const tenantId = randomUUID();
-      await tx.tenant.create({ data: { id: tenantId, tenantId, slug, name: input.tenantName } });
-
-      const permissions = await tx.permission.findMany();
-      const permId = Object.fromEntries(permissions.map((p) => [p.key, p.id]));
-
-      let ownerRoleId = '';
-      for (const [key, keys] of Object.entries(ROLE_PERMISSIONS)) {
-        const role = await tx.role.create({ data: { tenantId, key, name: key[0].toUpperCase() + key.slice(1), isSystem: true } });
-        if (key === 'owner') ownerRoleId = role.id;
-        if (keys.length) await tx.rolePermission.createMany({ data: keys.map((pk) => ({ tenantId, roleId: role.id, permissionId: permId[pk] })) });
-      }
-
-      await tx.outlet.create({ data: { tenantId, code: 'MAIN', name: input.outletName ?? 'Main Outlet' } });
-      const user = await tx.user.create({ data: { tenantId, email, name: input.ownerName, passwordHash } });
-      await tx.userRole.create({ data: { tenantId, userId: user.id, roleId: ownerRoleId } });
-      await this.audit.recordIn(tx, { tenantId, actorUserId: user.id, action: 'tenant.signup', entity: 'tenants', entityId: tenantId, after: { slug, name: input.tenantName }, ip: meta.ip });
-
-      return { userId: user.id, tenantId, roles: ['owner'], permissions: [...ROLE_PERMISSIONS.owner] } satisfies AuthPrincipal;
-    });
-
     return this.issue(principal, meta);
   }
 

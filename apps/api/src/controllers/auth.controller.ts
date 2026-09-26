@@ -1,5 +1,5 @@
 import type { Request, Response } from 'express';
-import type { LoginRequest, SignupRequest } from '@billbistro/types';
+import type { LoginRequest } from '@billbistro/types';
 import { UnauthorizedException } from '../utils/errors';
 import { env } from '../config/env';
 import { auth } from '../container';
@@ -21,12 +21,6 @@ function setCookies(res: Response, pair: TokenPair) {
 export async function login(req: Request, res: Response) {
   const { tenantSlug, email, password } = req.body as LoginRequest;
   const pair = await auth.login(tenantSlug, email, password, meta(req));
-  setCookies(res, pair);
-  return { user: pair.principal, accessToken: pair.accessToken };
-}
-
-export async function signup(req: Request, res: Response) {
-  const pair = await auth.signup(req.body as SignupRequest, meta(req));
   setCookies(res, pair);
   return { user: pair.principal, accessToken: pair.accessToken };
 }

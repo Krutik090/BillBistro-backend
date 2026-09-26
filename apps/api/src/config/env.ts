@@ -19,6 +19,9 @@ const Env = z.object({
     .string()
     .default('false')
     .transform((v) => v === 'true'),
+  /** This deployment is single-restaurant; PUBLIC (unauthenticated) routes — QR menu/ordering —
+   * resolve "the" tenant from this slug instead of a JWT. Should match SEED_TENANT_SLUG. */
+  PUBLIC_TENANT_SLUG: z.string().default('demo'),
   CORS_ORIGINS: z
     .string()
     .default('http://localhost:3000')
