@@ -24,7 +24,7 @@ packages/types    shared Zod schemas + TS types
 packages/config   tsconfig presets, design tokens, tailwind theme (consumed by the frontend repo)
 prisma/           schema + migrations (incl. RLS policies) + seed
 infra/            docker-compose (postgres 16 + redis 7 + api), api.Dockerfile
-scripts/          rls-check.ts, tenant-isolation.check.ts, money-check.ts, hardening-check.ts, orders-e2e.ts, billing-e2e.ts
+scripts/          rls-check.ts, tenant-isolation.check.ts, money-check.ts, hardening-check.ts, orders-e2e.ts, billing-e2e.ts, reports-e2e.ts
 docs/qa/          security gate + test-strategy notes
 ```
 
@@ -96,6 +96,7 @@ curl http://localhost:4000/health   # {"status":"ok","db":"up",...}
 | Outlets | `GET /v1/outlets`, `GET /v1/outlets/:id` | `outlets.read` |
 | Orders/KOT | `POST /v1/orders` (clientKey idempotent, server-priced), `GET /v1/orders[/:id]`, `PATCH /v1/orders/:id/items` (KOT-sent lines immutable, `version`), `POST /v1/orders/:id/kots`, `POST /v1/orders/:id/cancel`, `GET /v1/kots` (KDS), `PATCH /v1/kots/:id/status` | `orders.*`, `kots.*` |
 | Billing | `POST /v1/bills` (merge `mergeOrderIds`, split `splitOf`, discount-before-tax, tip; clientKey idempotent), `PATCH /v1/bills/:id` (draft), `POST /v1/bills/:id/finalize`, `POST /v1/bills/:id/void`, `POST /v1/bills/:id/payments` (idempotencyKey), `POST /v1/payments/:id/refunds`, `GET /v1/bills/:id/receipt`, `GET`/`POST /v1/day-close` (Z-report; a closed date blocks finalize/pay) | `bills.*`, `payments.*`, `reports.read` |
+| Reports | `GET /v1/reports/sales` (gross/discount/tax/tip/net + collections by payment mode + voids, over `outletId`+`from`+`to`), `GET /v1/reports/items` (qty/gross/tax/net per menu line), `GET /v1/reports/tax` (GST by rate bracket) — all read-only, computed off the already-frozen `bills`/`bill_lines`/`payments` | `reports.read` |
 
 Money math: `apps/api/src/utils/pricing.ts` + `BillingService.compute` (int paise; per-line GST by bps after proportional pre-tax discount; CGST/SGST halves; tip after tax; grand total rounded to the rupee; split shares sum exactly). Full OpenAPI at `/docs`. Errors share one shape: `{statusCode, error, message, requestId, path}` (+`issues[]` on 400).
 Hardening: deny-by-default RBAC, 10 logins/min/IP, lockout after 5 failures (423), append-only `audit_logs`.
@@ -123,9 +124,10 @@ Built and smoke-verified on `phase1-backend`:
 - **Floor** — sections, tables, occupancy state machine with optimistic versioning.
 - **Orders/KOT** — server-priced lines, idempotent create, KOT routing + KDS feed, immutable sent lines, cancel.
 - **Billing** — split (equal-N) / merge bills, discount-before-tax, per-line GST (CGST/SGST), tip, rupee round-off, cash/UPI/card payments (idempotent), refunds, void, receipt payload, day-close Z-report.
-- **Gates (CI merge blockers):** `npm run check:money` (pure money math) and `npm run db:iso-check` (RLS coverage + cross-tenant sweep); `npm run db:rls-check` and the 423/429 hardening probe run as extra checks.
+- **Reports (T-104)** — sales summary, item-wise sales, GST-by-rate-bracket, all over an outlet + date range; read-only, no new tables.
+- **Gates (CI merge blockers):** `npm run check:money` (pure money math) and `npm run db:iso-check` (RLS coverage + cross-tenant sweep); `npm run db:rls-check`, the 423/429 hardening probe, and the orders/billing/reports e2e probes run as extra (non-blocking) checks.
 
-Not built yet: by-item / by-seat split bills, reports (T-104), payment gateway, realtime (WebSocket) KDS push, tenant self-serve onboarding.
+Not built yet: by-item / by-seat split bills, payment gateway, realtime (WebSocket) KDS push, tenant self-serve onboarding.
 
 ### Run the full stack
 
