@@ -5,6 +5,7 @@ import { PrismaService } from '../database/client';
 import { currentContext, requireTenantId } from '../context/tenant-context';
 import { orderTotals, PricedLine } from '../utils/pricing';
 import { publishKot } from '../utils/kot-events';
+import { deductStockForKot } from './inventory.service';
 import * as S from '../schemas/orders.schemas';
 
 const live = { deletedAt: null } as const;
@@ -188,6 +189,7 @@ export class OrdersService {
       const kotNo = await this.nextNo(tx, tid, order.outletId, 'kot', 'K');
       const kot = await tx.kot.create({ data: { tenantId: tid, orderId, outletId: order.outletId, kotNo, station } });
       await tx.orderItem.updateMany({ where: { id: { in: chosen.map((c) => c.id) } }, data: { kotId: kot.id } });
+      await deductStockForKot(tx, tid, kot.id, chosen.map((c) => ({ itemId: c.itemId, qty: c.qty })));
       return { kotId: kot.id, outletId: order.outletId };
     });
     const row = await this.kotFeedRow(created.kotId);

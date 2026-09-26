@@ -292,6 +292,7 @@ model MenuItem {
   outletPrices   ItemOutletPrice[]
   comboItems     ComboItem[]
   orderItems     OrderItem[]
+  recipeLines    RecipeLine[]
 
   @@unique([tenantId, sku])
   @@index([tenantId, categoryId])
@@ -740,6 +741,77 @@ model DayClose {
   @@unique([outletId, businessDate])
   @@index([tenantId, outletId])
   @@map("day_closes")
+}
+
+// ---------------- Inventory (basic: stock levels + recipe-based auto-deduction, Phase 3) ----------------
+enum StockMovementType {
+  RECEIVE
+  ADJUST
+  DEDUCT
+}
+
+/// A stock-keeping unit (flour, chicken, cooking oil...). Quantities are integer milli-units
+/// (1 unit = 1000) — the same "money is integer paise, never floats" rule applied to stock, since
+/// unit conventions (kg/ltr/pcs) vary and repeated deductions must never drift from float rounding.
+model InventoryItem {
+  id            String    @id @default(uuid()) @db.Uuid
+  tenantId      String    @map("tenant_id") @db.Uuid
+  name          String
+  /// display unit label: kg, g, ltr, ml, pcs — not enforced, purely for display
+  unit          String
+  stockMilli    Int       @default(0) @map("stock_milli")
+  lowStockMilli Int       @default(0) @map("low_stock_milli")
+  isActive      Boolean   @default(true) @map("is_active")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+  deletedAt     DateTime? @map("deleted_at")
+
+  recipeLines RecipeLine[]
+  movements   StockMovement[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+  @@map("inventory_items")
+}
+
+/// Append-only stock ledger. balanceMilli is the resulting stock after this movement (a running
+/// snapshot, so history reads don't need to replay the whole ledger).
+model StockMovement {
+  id              String            @id @default(uuid()) @db.Uuid
+  tenantId        String            @map("tenant_id") @db.Uuid
+  inventoryItemId String            @map("inventory_item_id") @db.Uuid
+  inventoryItem   InventoryItem     @relation(fields: [inventoryItemId], references: [id])
+  type            StockMovementType
+  /// signed delta in milli-units (positive = RECEIVE/upward ADJUST, negative = DEDUCT/downward ADJUST)
+  qtyMilli        Int               @map("qty_milli")
+  balanceMilli    Int               @map("balance_milli")
+  reason          String?
+  /// set when type=DEDUCT and the deduction was triggered by sending a KOT
+  kotId           String?           @map("kot_id") @db.Uuid
+  createdById     String?           @map("created_by_id") @db.Uuid
+  createdAt       DateTime          @default(now()) @map("created_at")
+
+  @@index([tenantId, inventoryItemId, createdAt])
+  @@map("stock_movements")
+}
+
+/// How much of an InventoryItem ONE unit of a MenuItem consumes (e.g. 1 Butter Naan -> 80g flour).
+model RecipeLine {
+  id              String        @id @default(uuid()) @db.Uuid
+  tenantId        String        @map("tenant_id") @db.Uuid
+  menuItemId      String        @map("menu_item_id") @db.Uuid
+  menuItem        MenuItem      @relation(fields: [menuItemId], references: [id])
+  inventoryItemId String        @map("inventory_item_id") @db.Uuid
+  inventoryItem   InventoryItem @relation(fields: [inventoryItemId], references: [id])
+  /// consumption per ONE unit of the menu item, in milli-units of the inventory item
+  qtyMilli        Int           @map("qty_milli")
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+  deletedAt       DateTime?     @map("deleted_at")
+
+  @@unique([menuItemId, inventoryItemId])
+  @@index([tenantId, menuItemId])
+  @@map("recipe_lines")
 }
 
 // ---------------- Audit (append-only; no UPDATE/DELETE grant, see rls migration) ----------------

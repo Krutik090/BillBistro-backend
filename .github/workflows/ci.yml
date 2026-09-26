@@ -63,6 +63,10 @@ jobs:
         continue-on-error: true
         run: npm run db:signup-e2e
         env: { API_URL: http://localhost:4000 }
+      - name: Inventory runtime e2e (T-107 stock/ledger/recipe auto-deduction) — NON-blocking until proven stable
+        continue-on-error: true
+        run: npm run db:inventory-e2e
+        env: { API_URL: http://localhost:4000 }
       - name: API log (on probe failure)
         if: always()
         run: tail -n 50 api.log || true

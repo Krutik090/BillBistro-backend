@@ -24,7 +24,7 @@ packages/types    shared Zod schemas + TS types
 packages/config   tsconfig presets, design tokens, tailwind theme (consumed by the frontend repo)
 prisma/           schema + migrations (incl. RLS policies) + seed
 infra/            docker-compose (postgres 16 + redis 7 + api), api.Dockerfile
-scripts/          rls-check.ts, tenant-isolation.check.ts, money-check.ts, hardening-check.ts, orders-e2e.ts, billing-e2e.ts, reports-e2e.ts, signup-e2e.ts
+scripts/          rls-check.ts, tenant-isolation.check.ts, money-check.ts, hardening-check.ts, orders-e2e.ts, billing-e2e.ts, reports-e2e.ts, signup-e2e.ts, inventory-e2e.ts
 docs/qa/          security gate + test-strategy notes
 ```
 
@@ -97,6 +97,7 @@ curl http://localhost:4000/health   # {"status":"ok","db":"up",...}
 | Orders/KOT | `POST /v1/orders` (clientKey idempotent, server-priced), `GET /v1/orders[/:id]`, `PATCH /v1/orders/:id/items` (KOT-sent lines immutable, `version`), `POST /v1/orders/:id/kots`, `POST /v1/orders/:id/cancel`, `GET /v1/kots` (KDS), `PATCH /v1/kots/:id/status` | `orders.*`, `kots.*` |
 | Billing | `POST /v1/bills` (merge `mergeOrderIds`, split `splitOf`, discount-before-tax, tip; clientKey idempotent), `PATCH /v1/bills/:id` (draft), `POST /v1/bills/:id/finalize`, `POST /v1/bills/:id/void`, `POST /v1/bills/:id/payments` (idempotencyKey), `POST /v1/payments/:id/refunds`, `GET /v1/bills/:id/receipt`, `GET`/`POST /v1/day-close` (Z-report; a closed date blocks finalize/pay) | `bills.*`, `payments.*`, `reports.read` |
 | Reports | `GET /v1/reports/sales` (gross/discount/tax/tip/net + collections by payment mode + voids, over `outletId`+`from`+`to`), `GET /v1/reports/items` (qty/gross/tax/net per menu line), `GET /v1/reports/tax` (GST by rate bracket) — all read-only, computed off the already-frozen `bills`/`bill_lines`/`payments` | `reports.read` |
+| Inventory | `GET`/`POST /v1/inventory/items`, `PATCH /v1/inventory/items/:id`, `POST /v1/inventory/items/:id/adjust` (manual stock movement), `GET /v1/inventory/items/:id/movements` (ledger), `GET /v1/inventory/recipes?menuItemId=`, `PUT /v1/inventory/recipes/:menuItemId` (replace recipe) — stock is integer milli-units (1 unit = 1000, same "no floats" rule as money); sending a KOT auto-deducts recipe-linked stock | `inventory.read`, `inventory.write` |
 
 Money math: `apps/api/src/utils/pricing.ts` + `BillingService.compute` (int paise; per-line GST by bps after proportional pre-tax discount; CGST/SGST halves; tip after tax; grand total rounded to the rupee; split shares sum exactly). Full OpenAPI at `/docs`. Errors share one shape: `{statusCode, error, message, requestId, path}` (+`issues[]` on 400).
 Hardening: deny-by-default RBAC, 10 logins/min/IP, lockout after 5 failures (423), append-only `audit_logs`.

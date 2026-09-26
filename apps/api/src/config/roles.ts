@@ -8,7 +8,7 @@ export const PERMISSIONS = [
   'tenant.manage', 'outlets.read', 'outlets.write', 'users.read', 'users.write', 'roles.manage',
   'menu.read', 'menu.write', 'orders.read', 'orders.write', 'kots.read', 'kots.write',
   'bills.read', 'bills.write', 'bills.void', 'payments.read', 'payments.write', 'reports.read',
-  'tables.read', 'tables.write',
+  'tables.read', 'tables.write', 'inventory.read', 'inventory.write',
 ] as const;
 
 export const ROLE_PERMISSIONS: Record<string, readonly string[]> = {
