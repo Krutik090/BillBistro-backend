@@ -59,6 +59,10 @@ jobs:
         continue-on-error: true
         run: npm run db:reports-e2e
         env: { API_URL: http://localhost:4000 }
+      - name: Signup runtime e2e (T-106 self-serve onboarding) — NON-blocking until proven stable
+        continue-on-error: true
+        run: npm run db:signup-e2e
+        env: { API_URL: http://localhost:4000 }
       - name: API log (on probe failure)
         if: always()
         run: tail -n 50 api.log || true

@@ -11,6 +11,17 @@ export const LoginRequest = z.object({
 });
 export type LoginRequest = z.infer<typeof LoginRequest>;
 
+/** Self-serve tenant onboarding: tenant + owner + first outlet, provisioned in one transaction. */
+export const SignupRequest = z.object({
+  tenantName: z.string().min(2).max(120),
+  tenantSlug: z.string().min(2).max(60).regex(/^[a-z0-9]+(-[a-z0-9]+)*$/, 'lowercase letters, numbers, hyphens'),
+  ownerName: z.string().min(2).max(120),
+  email: z.string().email(),
+  password: z.string().min(8),
+  outletName: z.string().min(1).max(120).optional(),
+});
+export type SignupRequest = z.infer<typeof SignupRequest>;
+
 export const AuthUser = z.object({
   id: z.string().uuid(),
   tenantId: z.string().uuid(),

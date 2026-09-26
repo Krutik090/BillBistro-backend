@@ -22,3 +22,4 @@ const limiter = (windowMs: number, limit: number): RateLimitRequestHandler =>
 export const globalRateLimit = limiter(env.THROTTLE_TTL_MS, env.THROTTLE_LIMIT);
 export const loginRateLimit = limiter(60_000, 10);
 export const refreshRateLimit = limiter(60_000, 30);
+export const signupRateLimit = limiter(60_000, 5);

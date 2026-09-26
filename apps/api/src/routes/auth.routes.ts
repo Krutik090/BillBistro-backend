@@ -1,6 +1,6 @@
-import { LoginRequest } from '@billbistro/types';
+import { LoginRequest, SignupRequest } from '@billbistro/types';
 import { AUTHENTICATED, PUBLIC, makeRouter } from './router';
-import { loginRateLimit, refreshRateLimit } from '../middlewares/rate-limit.middleware';
+import { loginRateLimit, refreshRateLimit, signupRateLimit } from '../middlewares/rate-limit.middleware';
 import * as authController from '../controllers/auth.controller';
 
 export const authRoutes = makeRouter(
@@ -15,6 +15,17 @@ export const authRoutes = makeRouter(
       tags: ['auth'],
       summary: 'Sign in with tenant slug + email + password',
       handler: authController.login,
+    },
+    {
+      method: 'post',
+      path: '/signup',
+      policy: PUBLIC,
+      status: 201,
+      middleware: [signupRateLimit],
+      body: SignupRequest,
+      tags: ['auth'],
+      summary: 'Self-serve onboarding: tenant + owner + first outlet, provisioned in one transaction, then auto-login',
+      handler: authController.signup,
     },
     {
       method: 'post',

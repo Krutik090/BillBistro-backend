@@ -24,7 +24,7 @@ packages/types    shared Zod schemas + TS types
 packages/config   tsconfig presets, design tokens, tailwind theme (consumed by the frontend repo)
 prisma/           schema + migrations (incl. RLS policies) + seed
 infra/            docker-compose (postgres 16 + redis 7 + api), api.Dockerfile
-scripts/          rls-check.ts, tenant-isolation.check.ts, money-check.ts, hardening-check.ts, orders-e2e.ts, billing-e2e.ts, reports-e2e.ts
+scripts/          rls-check.ts, tenant-isolation.check.ts, money-check.ts, hardening-check.ts, orders-e2e.ts, billing-e2e.ts, reports-e2e.ts, signup-e2e.ts
 docs/qa/          security gate + test-strategy notes
 ```
 
@@ -90,7 +90,7 @@ curl http://localhost:4000/health   # {"status":"ok","db":"up",...}
 
 | Area | Base | RBAC |
 |---|---|---|
-| Auth | `POST /v1/auth/login|refresh|logout`, `GET /v1/auth/me` | public / any session |
+| Auth | `POST /v1/auth/login|refresh|logout|signup`, `GET /v1/auth/me` — signup provisions a tenant + owner + first outlet in one transaction, then auto-logs in | public / any session |
 | Menu | `/v1/menu/{schedules,categories,items,variants,modifier-groups,modifier-options,combos}`, `PUT items/:id/pricing`, `PUT items/:id/modifier-groups`, **`GET /v1/menu/outlets/:outletId/effective`** (resolved menu for POS/QR) | `menu.read` / `menu.write` |
 | Floor | `/v1/floor/{sections,tables}`, `POST tables/:id/status` (FREE→OCCUPIED→BILLED→CLEANING→FREE, optimistic `version`), **`GET /v1/floor/outlets/:outletId`** | `tables.read` / `tables.write` |
 | Outlets | `GET /v1/outlets`, `GET /v1/outlets/:id` | `outlets.read` |
@@ -127,7 +127,7 @@ Built and smoke-verified on `phase1-backend`:
 - **Reports (T-104)** — sales summary, item-wise sales, GST-by-rate-bracket, all over an outlet + date range; read-only, no new tables.
 - **Gates (CI merge blockers):** `npm run check:money` (pure money math) and `npm run db:iso-check` (RLS coverage + cross-tenant sweep); `npm run db:rls-check`, the 423/429 hardening probe, and the orders/billing/reports e2e probes run as extra (non-blocking) checks.
 
-Not built yet: by-item / by-seat split bills, payment gateway, realtime (WebSocket) KDS push, tenant self-serve onboarding.
+Not built yet: by-item / by-seat split bills, payment gateway, subscriptions/plans, per-tenant theming.
 
 ### Run the full stack
 

@@ -20,7 +20,8 @@
     "check:money": "tsx scripts/money-check.ts",
     "db:orders-e2e": "tsx scripts/orders-e2e.ts",
     "db:billing-e2e": "tsx scripts/billing-e2e.ts",
-    "db:reports-e2e": "tsx scripts/reports-e2e.ts"
+    "db:reports-e2e": "tsx scripts/reports-e2e.ts",
+    "db:signup-e2e": "tsx scripts/signup-e2e.ts"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

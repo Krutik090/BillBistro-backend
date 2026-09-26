@@ -3,21 +3,9 @@
 import 'dotenv/config';
 import { PrismaClient } from '@prisma/client';
 import argon2 from 'argon2';
+import { PERMISSIONS, ROLE_PERMISSIONS as ROLES } from '../apps/api/src/config/roles';
 
 const prisma = new PrismaClient({ datasources: { db: { url: process.env.DATABASE_URL_MIGRATE } } });
-
-export const PERMISSIONS = [
-  'tenant.manage', 'outlets.read', 'outlets.write', 'users.read', 'users.write', 'roles.manage',
-  'menu.read', 'menu.write', 'orders.read', 'orders.write', 'kots.read', 'kots.write',
-  'bills.read', 'bills.write', 'bills.void', 'payments.read', 'payments.write', 'reports.read',
-  'tables.read', 'tables.write',
-];
-const ROLES: Record<string, string[]> = {
-  owner: PERMISSIONS,
-  manager: PERMISSIONS.filter((p) => p !== 'tenant.manage'),
-  cashier: ['outlets.read', 'menu.read', 'orders.read', 'orders.write', 'kots.read', 'bills.read', 'bills.write', 'payments.read', 'payments.write', 'tables.read', 'tables.write'],
-  kitchen: ['outlets.read', 'kots.read', 'kots.write', 'orders.read'],
-};
 
 async function main() {
   await prisma.$transaction(async (tx) => {
