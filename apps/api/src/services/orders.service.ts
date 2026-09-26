@@ -4,6 +4,7 @@ import { AuditService } from './audit.service';
 import { PrismaService } from '../database/client';
 import { currentContext, requireTenantId } from '../context/tenant-context';
 import { orderTotals, PricedLine } from '../utils/pricing';
+import { publishKot } from '../utils/kot-events';
 import * as S from '../schemas/orders.schemas';
 
 const live = { deletedAt: null } as const;
@@ -16,6 +17,11 @@ const KOT_TRANSITIONS: Record<string, string[]> = {
   SERVED: [],
   CANCELLED: [],
 };
+
+const kotFeedInclude = {
+  order: { select: { id: true, orderNo: true, type: true, tableRef: true, table: { select: { code: true } } } },
+  items: { where: live, include: { modifiers: { where: live } } },
+} satisfies Prisma.KotInclude;
 
 const orderInclude = {
   items: { where: live, orderBy: { createdAt: 'asc' as const }, include: { modifiers: { where: live } } },
@@ -65,10 +71,7 @@ export class OrdersService {
     return this.db.kot.findMany({
       where: { ...live, outletId: q.outletId, ...(q.status ? { status: q.status } : {}), ...(q.station ? { station: q.station } : {}) },
       orderBy: { createdAt: 'asc' },
-      include: {
-        order: { select: { id: true, orderNo: true, type: true, tableRef: true, table: { select: { code: true } } } },
-        items: { where: live, include: { modifiers: { where: live } } },
-      },
+      include: kotFeedInclude,
     });
   }
 
@@ -174,7 +177,7 @@ export class OrdersService {
   // ---------- KOT ----------
   async createKot(orderId: string, d: S.CreateKot) {
     const tid = requireTenantId();
-    return this.prisma.withTenant(tid, async (tx) => {
+    const created = await this.prisma.withTenant(tid, async (tx) => {
       const order = await this.mustOpen(tx, orderId);
       const unsent = await tx.orderItem.findMany({ where: { orderId, kotId: null, ...live }, include: { item: { select: { station: true } } } });
       const chosen = d.orderItemIds ? unsent.filter((u) => d.orderItemIds!.includes(u.id)) : unsent;
@@ -185,8 +188,11 @@ export class OrdersService {
       const kotNo = await this.nextNo(tx, tid, order.outletId, 'kot', 'K');
       const kot = await tx.kot.create({ data: { tenantId: tid, orderId, outletId: order.outletId, kotNo, station } });
       await tx.orderItem.updateMany({ where: { id: { in: chosen.map((c) => c.id) } }, data: { kotId: kot.id } });
-      return tx.kot.findUniqueOrThrow({ where: { id: kot.id }, include: { items: { where: live, include: { modifiers: { where: live } } } } });
+      return { kotId: kot.id, outletId: order.outletId };
     });
+    const row = await this.kotFeedRow(created.kotId);
+    publishKot(tid, created.outletId, row);
+    return row;
   }
 
   async setKotStatus(id: string, d: S.SetKotStatus) {
@@ -194,26 +200,38 @@ export class OrdersService {
     if (!kot) throw new NotFoundException('KOT not found');
     if (kot.status === d.status) return kot;
     if (!KOT_TRANSITIONS[kot.status].includes(d.status)) throw new UnprocessableEntityException(`Cannot go from ${kot.status} to ${d.status}`);
-    return this.db.kot.update({
+    await this.db.kot.update({
       where: { id },
       data: { status: d.status, ...(d.status === 'READY' ? { readyAt: new Date() } : {}), ...(d.status === 'SERVED' ? { servedAt: new Date() } : {}) },
     });
+    const row = await this.kotFeedRow(id);
+    publishKot(requireTenantId(), kot.outletId, row);
+    return row;
+  }
+
+  /** KDS feed shape for one KOT (order context + items + modifiers) — used by both the list and the push events, so subscribers can merge either into the same board. */
+  private kotFeedRow(id: string) {
+    return this.db.kot.findUniqueOrThrow({ where: { id }, include: kotFeedInclude });
   }
 
   // ---------- cancel ----------
   async cancel(id: string, d: S.CancelOrder) {
     const tid = requireTenantId();
-    return this.prisma.withTenant(tid, async (tx) => {
+    const result = await this.prisma.withTenant(tid, async (tx) => {
       const order = await this.mustOpen(tx, id, d.version);
       await this.claimVersion(tx, id, d.version ?? order.version);
       await tx.order.update({ where: { id }, data: { status: 'CANCELLED', cancelledAt: new Date(), cancelReason: d.reason } }); // version already bumped by claimVersion
-      await tx.kot.updateMany({ where: { orderId: id, status: { in: ['PENDING', 'PREPARING', 'READY'] } }, data: { status: 'CANCELLED' } });
+      const liveKots = await tx.kot.findMany({ where: { orderId: id, status: { in: ['PENDING', 'PREPARING', 'READY'] } }, select: { id: true } });
+      if (liveKots.length) await tx.kot.updateMany({ where: { id: { in: liveKots.map((k) => k.id) } }, data: { status: 'CANCELLED' } });
       if (order.tableId) {
         await tx.restaurantTable.updateMany({ where: { id: order.tableId, currentOrderId: id }, data: { status: 'FREE', statusSince: new Date(), currentOrderId: null, version: { increment: 1 } } });
       }
       await this.audit.recordIn(tx, { action: 'order.cancel', entity: 'orders', entityId: id, before: { status: order.status, total: order.total }, after: { status: 'CANCELLED' }, meta: { reason: d.reason } });
-      return this.get_(tx, id);
+      return { order: await this.get_(tx, id), outletId: order.outletId, kotIds: liveKots.map((k) => k.id) };
     });
+    // Cancelled KOTs must drop off the KDS board too — publish each so a live subscriber removes them.
+    for (const kotId of result.kotIds) publishKot(tid, result.outletId, await this.kotFeedRow(kotId));
+    return result.order;
   }
 
   // ---------- helpers ----------

@@ -33,6 +33,7 @@ const specs: RouteSpec[] = [
   // KDS feed
   { method: 'get', path: '/kots', policy: permissions('kots.read'), query: S.ListKotsQuery, tags: ['kots'], summary: 'Kitchen display feed', handler: ordersController.listKots },
   { method: 'patch', path: '/kots/:id/status', policy: permissions('kots.write'), uuidParams: ['id'], body: S.SetKotStatus, tags: ['kots'], handler: ordersController.setKotStatus },
+  { method: 'get', path: '/kots/stream', policy: permissions('kots.read'), query: S.ListKotsQuery, tags: ['kots'], summary: 'Server-Sent Events: push a KOT row on create/status-change/cancel for one outlet', handler: ordersController.streamKots },
 ];
 
 export const ordersRoutes = makeRouter(specs, '/v1');
