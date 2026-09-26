@@ -22,7 +22,9 @@
     "db:billing-e2e": "tsx scripts/billing-e2e.ts",
     "db:reports-e2e": "tsx scripts/reports-e2e.ts",
     "db:inventory-e2e": "tsx scripts/inventory-e2e.ts",
-    "db:qr-order-e2e": "tsx scripts/qr-order-e2e.ts"
+    "db:qr-order-e2e": "tsx scripts/qr-order-e2e.ts",
+    "db:customers-e2e": "tsx scripts/customers-e2e.ts",
+    "db:settings-e2e": "tsx scripts/settings-e2e.ts"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

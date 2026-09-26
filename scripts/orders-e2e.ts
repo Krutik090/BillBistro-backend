@@ -133,6 +133,13 @@ async function main() {
   check(cancel.status === 200 || cancel.status === 201, `cancel accepted (${cancel.status})`);
   check(after.json?.status === 'CANCELLED', `order status -> CANCELLED (got ${after.json?.status})`);
 
+  console.log('\n[8] list (dashboard/POS Live Orders view):');
+  const forList = await api('POST', '/orders', { outletId, items: [{ itemId: item.id, qty: 1 }] });
+  const list = await api('GET', `/orders?outletId=${outletId}&status=OPEN&limit=200`);
+  check(Array.isArray(list.json), `GET /orders -> array (got ${typeof list.json})`);
+  const row = (list.json ?? []).find((o: any) => o.id === forList.json?.id);
+  check(!!row && row.status === 'OPEN' && typeof row._count?.items === 'number', `just-created order appears in the OPEN list with _count.items (got ${JSON.stringify(row?._count)})`);
+
   console.log(`\n==== ORDERS E2E VERDICT: ${failures === 0 ? 'PASS' : `FAIL (${failures})`} ====`);
   process.exit(failures === 0 ? 0 : 1);
 }

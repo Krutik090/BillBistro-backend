@@ -814,6 +814,23 @@ model RecipeLine {
   @@map("recipe_lines")
 }
 
+// ---------------- CRM (basic: a phone book, T-109) ----------------
+model Customer {
+  id        String    @id @default(uuid()) @db.Uuid
+  tenantId  String    @map("tenant_id") @db.Uuid
+  name      String
+  phone     String
+  email     String?
+  notes     String?
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  @@unique([tenantId, phone])
+  @@index([tenantId])
+  @@map("customers")
+}
+
 // ---------------- Audit (append-only; no UPDATE/DELETE grant, see rls migration) ----------------
 model AuditLog {
   id          String   @id @default(uuid()) @db.Uuid

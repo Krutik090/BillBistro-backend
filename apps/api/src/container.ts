@@ -9,6 +9,8 @@ import { BillingService } from './services/billing.service';
 import { OutletsService } from './services/outlets.service';
 import { ReportsService } from './services/reports.service';
 import { InventoryService } from './services/inventory.service';
+import { CustomersService } from './services/customers.service';
+import { SettingsService } from './services/settings.service';
 
 /**
  * Composition root — the DI container Nest used to build, written out explicitly.
@@ -23,5 +25,7 @@ export const billing = new BillingService(prisma, audit);
 export const outlets = new OutletsService(prisma);
 export const reports = new ReportsService(prisma);
 export const inventory = new InventoryService(prisma, audit);
+export const customers = new CustomersService(prisma);
+export const settings = new SettingsService(prisma);
 
 export { prisma };

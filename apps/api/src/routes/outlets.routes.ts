@@ -1,5 +1,6 @@
 import { makeRouter, permissions } from './router';
 import * as outletsController from '../controllers/outlets.controller';
+import { UpdateOutlet } from '../schemas/outlets.schemas';
 
 export const outletsRoutes = makeRouter(
   [
@@ -19,6 +20,16 @@ export const outletsRoutes = makeRouter(
       tags: ['outlets'],
       summary: 'Get one outlet',
       handler: outletsController.get,
+    },
+    {
+      method: 'patch',
+      path: '/:id',
+      policy: permissions('outlets.write'),
+      uuidParams: ['id'],
+      body: UpdateOutlet,
+      tags: ['outlets'],
+      summary: 'Update outlet profile (name/address/phone) — Settings',
+      handler: outletsController.update,
     },
   ],
   '/v1/outlets',
