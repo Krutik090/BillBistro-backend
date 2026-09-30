@@ -1,0 +1,17 @@
+# Keeps host-built artifacts (Windows/host-arch node_modules, stale dist/.next, .git history) out of
+# the build context — without this, `COPY . .` after `RUN npm ci` can overwrite the image's correctly
+# installed node_modules with the host's, breaking native bindings (e.g. argon2, @prisma/client).
+node_modules/
+**/node_modules/
+dist/
+**/dist/
+.next/
+**/.next/
+.turbo/
+**/.turbo/
+.git/
+*.log
+.env
+.env.*
+!.env.example
+coverage/
